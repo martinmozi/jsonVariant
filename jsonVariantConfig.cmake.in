@@ -1,0 +1,11 @@
+# Config file for the json variant package.
+#
+# It defines the following variables:
+#  JSONVARIANT_VERSION      - version of json variant
+#  JSONVARIANT_FOUND        - set to true
+#  JSONVARIANT_INCLUDE_DIRS - include directories for json variant
+
+set(JSONVARIANT_VERSION "@PROJECT_VERSION@")
+set(JSONVARIANT_FOUND "TRUE")
+set(JSONVARIANT_INCLUDE_DIRS "@CMAKE_INSTALL_FULL_INCLUDEDIR@")
+
