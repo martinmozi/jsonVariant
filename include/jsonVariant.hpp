@@ -46,7 +46,7 @@ namespace JsonSerialization
 		} PDATA;
 
 		PDATA pData_;
-		Type type_ = Type::NotDefined;
+		Type type_;
 
 	private:
 		void clear()
@@ -115,37 +115,16 @@ namespace JsonSerialization
 				break;
 
 			case Type::String:
-			{
 				pData_.pData = new std::string(*(std::string*)value.pData_.pData);
 				break;
-			}
-			break;
 
 			case Type::Vector:
-			{
-				pData_.pData = new VariantVector;
-				VariantVector* pVector = (VariantVector*)pData_.pData;
-				VariantVector* pJsonVariantVector = (VariantVector*)value.pData_.pData;
-				for (Variant& jsonVariant : *pJsonVariantVector)
-				{
-					Variant variant(jsonVariant);
-					pVector->push_back(variant);
-				}
-			}
-			break;
+				pData_.pData = new VariantVector(*((VariantVector*)value.pData_.pData));
+				break;
 
 			case Type::Map:
-			{
-				pData_.pData = new VariantMap;
-				VariantMap* pMap = (VariantMap*)pData_.pData;
-				VariantMap* pJsonVariantMap = (VariantMap*)value.pData_.pData;
-				for (auto& it : *pJsonVariantMap)
-				{
-					Variant variant(it.second);
-					pMap->insert(std::make_pair(it.first, variant));
-				}
-			}
-			break;
+				pData_.pData = new VariantMap(*((VariantMap*)value.pData_.pData));	
+				break;
 
 			default:
 				break;
@@ -160,7 +139,7 @@ namespace JsonSerialization
 			value.type_ = Type::NotDefined;
 		}
 
-		static Variant _fromJson(rapidjson::Value& value)
+		static Variant _fromJson(const rapidjson::Value& value)
 		{
 			if (value.IsNull())
 			{
@@ -203,15 +182,22 @@ namespace JsonSerialization
 		}
 
 	public:
-		Variant() { pData_.pData = nullptr; }
+		Variant() 
+		{ 
+			type_ = Type::NotDefined;
+			pData_.pData = nullptr; 
+		}
 
 		Variant(std::nullptr_t)
 		{
-			pData_.pData = nullptr;
 			type_ = Type::Null;
+			pData_.pData = nullptr;
 		}
 
-		Variant(int value) : Variant((int64_t)value) {}
+		Variant(int value) 
+		:   Variant((int64_t)value) 
+		{
+		}
 
 		Variant(int64_t value)
 		{
@@ -231,7 +217,10 @@ namespace JsonSerialization
 			pData_.boolValue = value;
 		}
 
-		Variant(const char* value) : Variant(std::string(value)) {}
+		Variant(const char* value) 
+		:   Variant(std::string(value)) 
+		{
+		}
 
 		Variant(const std::string& value)
 		{
@@ -242,38 +231,24 @@ namespace JsonSerialization
 		Variant(const VariantVector& value)
 		{
 			type_ = Type::Vector;
-			VariantVector* pJsonVariantVector = new VariantVector();
-			*pJsonVariantVector = value;
-			pData_.pData = pJsonVariantVector;
-		}
-
-		Variant(VariantVector&& value)
-		{
-			type_ = Type::Vector;
-			VariantVector* pJsonVariantVector = new VariantVector();
-			*pJsonVariantVector = std::move(value);
-			pData_.pData = pJsonVariantVector;
+			pData_.pData = new VariantVector(value);
 		}
 
 		Variant(const VariantMap& value)
 		{
 			type_ = Type::Map;
-			VariantMap* pJsonVariantMap = new VariantMap();
-			*pJsonVariantMap = value;
-			pData_.pData = pJsonVariantMap;
+			pData_.pData = new VariantMap(value);
 		}
 
-		Variant(VariantMap&& value)
-		{
-			type_ = Type::Map;
-			VariantMap* pJsonVariantMap = new VariantMap();
-			*pJsonVariantMap = std::move(value);
-			pData_.pData = pJsonVariantMap;
+		Variant(const Variant& value) 
+		{ 
+			copyAll(value);
 		}
 
-		Variant(const Variant& value) { copyAll(value); }
-
-		Variant(Variant&& value) { moveAll(value); }
+		Variant(Variant&& value) 
+		{ 
+			moveAll(value);
+		}
 
 		Variant& operator=(const Variant& value)
 		{
@@ -288,11 +263,20 @@ namespace JsonSerialization
 			return *this;
 		}
 
-		~Variant() { clear(); }
+		~Variant() 
+		{ 
+			clear(); 
+		}
 
-		Type type() const { return type_; }
+		Type type() const 
+		{ 
+			return type_; 
+		}
 
-		bool isNull() const { return (type_ == Type::Null); }
+		bool isNull() const 
+		{ 
+			return (type_ == Type::Null); 
+		}
 
 		int64_t toInt64() const
 		{
@@ -328,13 +312,14 @@ namespace JsonSerialization
 			return false;
 		}
 
-		std::string toString() const
+		const std::string& toString() const
 		{
 			if (type_ == Type::String)
 				return *(std::string*)pData_.pData;
 
 			assert(0);
-			return "";
+			static std::string vs;
+			return vs;
 		}
 
 		const VariantVector& toVector() const
