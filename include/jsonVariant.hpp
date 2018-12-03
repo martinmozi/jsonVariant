@@ -139,6 +139,7 @@ namespace JsonSerialization
 			value.type_ = Type::NotDefined;
 		}
 
+#ifdef __RAPID_JSON_BACKEND
 		static Variant _fromJson(const rapidjson::Value& value)
 		{
 			if (value.IsNull())
@@ -180,6 +181,49 @@ namespace JsonSerialization
 
 			return Variant();
 		}
+#else
+		static Variant _fromJson(const nlohmann::json & value)
+		{
+			if (value.is_null())
+			{
+				return Variant(nullptr);
+			}
+			else if (value.is_number_integer())
+			{
+				return Variant(value.get<int64_t>());
+			}
+			else if (value.is_number_float())
+			{
+				return Variant(value.get<double>());
+			}
+			else if (value.is_boolean())
+			{
+				return Variant(value.get<bool>());
+			}
+			else if (value.is_string())
+			{
+				return Variant(value.get<std::string>());
+			}
+			else if (value.is_array())
+			{
+				VariantVector variantVector;
+				for (auto it = value.begin(); it != value.end(); it++)
+					variantVector.push_back(_fromJson(*it));
+
+				return Variant(variantVector);
+			}
+			else if (value.is_object())
+			{
+				VariantMap variantMap;
+				for (auto it = value.begin(); it != value.end(); it++)
+					variantMap.insert(std::make_pair(it.key(), _fromJson(it.value())));
+
+				return Variant(variantMap);
+			}
+
+			return Variant();
+		}
+#endif
 
 	public:
 		Variant() 
@@ -404,6 +448,7 @@ namespace JsonSerialization
 
 		static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
 		{
+#ifdef __RAPID_JSON_BACKEND
 			rapidjson::Document document;
 			auto& doc = document.Parse(jsonStr.c_str());
 			if (doc.HasParseError())
@@ -413,7 +458,20 @@ namespace JsonSerialization
 
 				return false;
 			}
+#else
+			nlohmann::json doc;
+			try
+			{
+				doc = nlohmann::json::parse(jsonStr);
+			}
+			catch (nlohmann::json::parse_error& e)
+			{
+				if (errorStr)
+					*errorStr = std::string("Parse error with code: ") + e.what();
 
+				return false;
+			}
+#endif
 			jsonVariant = _fromJson(doc);
 			return true;
 		}
