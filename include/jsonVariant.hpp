@@ -142,7 +142,7 @@ namespace JsonSerialization
 #ifdef __RAPID_JSON_BACKEND
 		static Variant _fromJson(const rapidjson::Value& value)
 		{
-      if (value.IsEmpty())
+			if (value.IsEmpty())
 			{
 				return Variant(nullptr);
 			}
