@@ -26,7 +26,7 @@ namespace JsonSerialization
 	public:
 		enum class Type : char
 		{
-			NotDefined,
+			Empty,
 			Null,
 			Int,
 			Double,
@@ -90,7 +90,7 @@ namespace JsonSerialization
 			}
 
 			pData_.pData = nullptr;
-			type_ = Type::NotDefined;
+			type_ = Type::Empty;
 		}
 
 		void copyAll(const Variant& value)
@@ -136,13 +136,17 @@ namespace JsonSerialization
 			pData_ = value.pData_;
 			type_ = value.type_;
 			value.pData_.pData = nullptr;
-			value.type_ = Type::NotDefined;
+			value.type_ = Type::Empty;
 		}
 
 #ifdef __RAPID_JSON_BACKEND
 		static Variant _fromJson(const rapidjson::Value& value)
 		{
-			if (value.IsNull())
+      if (value.IsEmpty())
+			{
+				return Variant(nullptr);
+			}
+			else if (value.IsNull())
 			{
 				return Variant(nullptr);
 			}
@@ -228,7 +232,7 @@ namespace JsonSerialization
 	public:
 		Variant() 
 		{ 
-			type_ = Type::NotDefined;
+			type_ = Type::Empty;
 			pData_.pData = nullptr; 
 		}
 
@@ -315,6 +319,11 @@ namespace JsonSerialization
 		Type type() const 
 		{ 
 			return type_; 
+		}
+   
+		bool isEmpty() const 
+		{ 
+			return (type_ == Type::Empty); 
 		}
 
 		bool isNull() const 
