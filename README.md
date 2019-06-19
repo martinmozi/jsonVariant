@@ -12,7 +12,7 @@ The json schema validation is supported only with rapidjson backend
 # Build & Install
 
 * `cmake -DCMAKE_BUILD_TYPE=Release -DRAPIDJSON_BACKEND=ON -DBUILD_EXAMPLES=ON .` - Replace _Release_ with _Debug_ for a build with debug symbols.
-* `cmake --build . --target install` - use sudo on Linux for installing to system directories
+* `cmake . && make install` - use sudo on Linux for installing to system directories
 
 # Usage
 

@@ -34,7 +34,7 @@ endif()
 
 #installing header
 set_target_properties(PROPERTIES VERSION "${PROJECT_VERSION}")
-install(FILES ${JSON_VARIANT_INCLUDE_DIR}/jsonVariant.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/jsonVariant)
+install(FILES ${JSON_VARIANT_INCLUDE_DIR}/jsonVariant.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 
 #installing cmake supported files
