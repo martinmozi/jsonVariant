@@ -1,13 +1,12 @@
-jsonVariant is a C++ header-only library for deserializing JSON strings to the recursive variants and serializing recursive variants to JSON strings
+jsonVariant is a generic C++ header-only library for deserializing JSON strings to the recursive variants and serializing recursive variants to JSON strings
 
 # Installation
 
-Copy the header file into your project or use cmake for installing header to system folders
+Copy the header file into your project or use cmake for installing header to your system folders
 
 # Prerequisities
 
-The library is uses rapidjson (https://github.com/Tencent/rapidjson) as a default backend. Alternatively it's also possible to use jsoncpp https://github.com/open-source-parsers/jsoncpp.
-The json schema validation is supported only with rapidjson backend
+The library is using rapidjson (https://github.com/Tencent/rapidjson) as a backend. The jsonschema validation is supported as well.
 
 # Build & Install
 
@@ -16,7 +15,7 @@ The json schema validation is supported only with rapidjson backend
 
 # Usage
 
-Read json string to recursive variant structure. For advanced json schema validation see [examples](https://github.com/martinmozi/jsonVariant/tree/master/examples/deserialization.cpp)
+Read json string to recursive variant structure. For advanced json schema validation and parsing with generic approach see [examples](https://github.com/martinmozi/jsonVariant/tree/master/examples/deserialization.cpp)
 
 ```c++
 #include "jsonVariant.hpp"
