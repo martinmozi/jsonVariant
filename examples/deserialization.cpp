@@ -95,6 +95,6 @@ int main()
         team.players.push_back(player);
     }
 
-    team.identificators = objectMap("identificators").valueVector<int64_t>();
+    objectMap("identificators").valueVector(team.identificators);
     return 1;
 }

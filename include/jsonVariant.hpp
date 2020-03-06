@@ -412,13 +412,11 @@ namespace JsonSerialization
         template<typename T> T value() const 
         { 
             static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
-            return T(); 
         }
 
         template<typename T> const T & valueByRef() const 
         { 
-            static T t;
-            return t;
+            static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
         }
 
         template<typename T> std::vector<T> valueVector() const
@@ -429,6 +427,11 @@ namespace JsonSerialization
                 outVector.push_back(std::move(v.value<T>()));
 
             return outVector;
+        }
+
+        template<typename T> void valueVector(std::vector<T> & val) const
+        {
+            val = valueVector<T>();
         }
 
         std::string toJson() const
