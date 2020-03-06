@@ -5,524 +5,560 @@
 #include <map>
 #include <string>
 #include <vector>
-
-#ifdef __RAPID_JSON_BACKEND
-	#include <rapidjson/document.h>
-	#include <rapidjson/schema.h>
-#elif __JSON_CPP_BACKEND
-	#include <json.hpp>
-#else
-	#error Define backend for json parsing
-#endif
+#include <rapidjson/document.h>
+#include <rapidjson/schema.h>
 
 namespace JsonSerialization
 {
-	class Variant;
-	typedef std::map<std::string, Variant> VariantMap;
-	typedef std::vector<Variant> VariantVector;
+    class Variant;
+    template <typename T1, typename T2> struct _VariantMap : std::map<T1, T2>
+    {
+        using std::map<T1, T2>::map; // "inherit" the constructors.
+        bool contains(const char* key) const
+        {
+            return (this->find(key) != this->end());
+        }
 
-	class Variant
-	{
-	public:
-		enum class Type : char
-		{
-			Empty,
-			Null,
-			Int,
-			Double,
-			Bool,
-			String,
-			Vector,
-			Map
-		};
+        bool isNull(const char* key) const
+        {
+            const auto it = this->find(key);
+            if (it == this->end())
+                return false;
 
-	private:
-		typedef union 
-		{
-			bool boolValue;
-			int64_t intValue;
-			double doubleValue;
-			void* pData;
-		} PDATA;
+            return it->second.isNull();
+        }
 
-		PDATA pData_;
-		Type type_;
+        template<typename T> T value(const char* key, T defaultValue) const
+        {
+            const auto it = this->find(key);
+            if (it != this->end())
+                return it->second.value<T>();
 
-	private:
-		void clear()
-		{
-			switch (type_)
-			{
-			case Type::Int:
-			case Type::Double:
-			case Type::Bool:
-				break;
+            return defaultValue;
+        }
 
-			case Type::String:
-			{
-				std::string* pString = (std::string*)pData_.pData;
-				delete pString;
-			}
-			break;
+        template<typename T> void value(const char* key, T & val, T defaultValue) const
+        {
+            val = this->value(key, defaultValue);
+        }
 
-			case Type::Vector:
-			{
-				VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
-				for (Variant& jsonVariant : *pJsonVariantVector)
-					jsonVariant.clear();
+        const Variant& operator()(const char* key) const
+        {
+            return this->at(key);
+        }
+    };
 
-				delete pJsonVariantVector;
-			}
-			break;
+    typedef _VariantMap<std::string, Variant> VariantMap;
+    typedef std::vector<Variant> VariantVector;
 
-			case Type::Map:
-			{
-				VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
-				for (auto& it : *pJsonVariantMap)
-					it.second.clear();
+    class Variant
+    {
+    public:
+        enum class Type : char
+        {
+            Empty,
+            Null,
+            Int,
+            Double,
+            Bool,
+            String,
+            Vector,
+            Map
+        };
 
-				delete pJsonVariantMap;
-			}
-			break;
+    private:
+        typedef union 
+        {
+            bool boolValue;
+            int64_t intValue;
+            double doubleValue;
+            void* pData;
+        } PDATA;
 
-			default:
-				break;
-			}
+        PDATA pData_;
+        Type type_;
 
-			pData_.pData = nullptr;
-			type_ = Type::Empty;
-		}
+    private:
+        void clear()
+        {
+            switch (type_)
+            {
+            case Type::Int:
+            case Type::Double:
+            case Type::Bool:
+                break;
 
-		void copyAll(const Variant& value)
-		{
-			type_ = value.type_;
-			switch (type_)
-			{
-			case Type::Null:
-				pData_.pData = nullptr;
-				break;
+            case Type::String:
+            {
+                std::string* pString = (std::string*)pData_.pData;
+                delete pString;
+            }
+            break;
 
-			case Type::Int:
-				pData_.intValue = value.pData_.intValue;
-				break;
+            case Type::Vector:
+            {
+                VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
+                for (Variant& jsonVariant : *pJsonVariantVector)
+                    jsonVariant.clear();
 
-			case Type::Double:
-				pData_.doubleValue = value.pData_.doubleValue;
-				break;
+                delete pJsonVariantVector;
+            }
+            break;
 
-			case Type::Bool:
-				pData_.boolValue = value.pData_.boolValue;
-				break;
+            case Type::Map:
+            {
+                VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
+                for (auto& it : *pJsonVariantMap)
+                    it.second.clear();
 
-			case Type::String:
-				pData_.pData = new std::string(*(std::string*)value.pData_.pData);
-				break;
+                delete pJsonVariantMap;
+            }
+            break;
 
-			case Type::Vector:
-				pData_.pData = new VariantVector(*((VariantVector*)value.pData_.pData));
-				break;
+            default:
+                break;
+            }
 
-			case Type::Map:
-				pData_.pData = new VariantMap(*((VariantMap*)value.pData_.pData));	
-				break;
+            pData_.pData = nullptr;
+            type_ = Type::Empty;
+        }
 
-			default:
-				break;
-			}
-		}
+        void copyAll(const Variant& value)
+        {
+            type_ = value.type_;
+            switch (type_)
+            {
+            case Type::Null:
+                pData_.pData = nullptr;
+                break;
 
-		void moveAll(Variant& value)
-		{
-			pData_ = value.pData_;
-			type_ = value.type_;
-			value.pData_.pData = nullptr;
-			value.type_ = Type::Empty;
-		}
+            case Type::Int:
+                pData_.intValue = value.pData_.intValue;
+                break;
 
-#ifdef __RAPID_JSON_BACKEND
-		static Variant _fromJson(const rapidjson::Value& value)
-		{
-			if (value.Empty())
-			{
-				return Variant(nullptr);
-			}
-			else if (value.IsNull())
-			{
-				return Variant(nullptr);
-			}
-			else if (value.IsInt64())
-			{
-				return Variant(value.GetInt64());
-			}
-			else if (value.IsDouble())
-			{
-				return Variant(value.GetDouble());
-			}
-			else if (value.IsBool())
-			{
-				return Variant(value.GetBool());
-			}
-			else if (value.IsString())
-			{
-				return Variant(value.GetString());
-			}
-			else if (value.IsArray())
-			{
-				VariantVector variantVector;
-				for (auto it = value.Begin(); it != value.End(); it++)
-					variantVector.push_back(_fromJson(*it));
+            case Type::Double:
+                pData_.doubleValue = value.pData_.doubleValue;
+                break;
 
-				return Variant(variantVector);
-			}
-			else if (value.IsObject())
-			{
-				VariantMap variantMap;
-				for (auto it = value.MemberBegin(); it != value.MemberEnd(); it++)
-					variantMap.insert(std::make_pair(it->name.GetString(), _fromJson(it->value)));
+            case Type::Bool:
+                pData_.boolValue = value.pData_.boolValue;
+                break;
 
-				return Variant(variantMap);
-			}
+            case Type::String:
+                pData_.pData = new std::string(*(std::string*)value.pData_.pData);
+                break;
 
-			return Variant();
-		}
-#else
-		static Variant _fromJson(const nlohmann::json & value)
-		{
-			if (value.is_null())
-			{
-				return Variant(nullptr);
-			}
-			else if (value.is_number_integer())
-			{
-				return Variant(value.get<int64_t>());
-			}
-			else if (value.is_number_float())
-			{
-				return Variant(value.get<double>());
-			}
-			else if (value.is_boolean())
-			{
-				return Variant(value.get<bool>());
-			}
-			else if (value.is_string())
-			{
-				return Variant(value.get<std::string>());
-			}
-			else if (value.is_array())
-			{
-				VariantVector variantVector;
-				for (auto it = value.begin(); it != value.end(); it++)
-					variantVector.push_back(_fromJson(*it));
+            case Type::Vector:
+                pData_.pData = new VariantVector(*((VariantVector*)value.pData_.pData));
+                break;
 
-				return Variant(variantVector);
-			}
-			else if (value.is_object())
-			{
-				VariantMap variantMap;
-				for (auto it = value.begin(); it != value.end(); it++)
-					variantMap.insert(std::make_pair(it.key(), _fromJson(it.value())));
+            case Type::Map:
+                pData_.pData = new VariantMap(*((VariantMap*)value.pData_.pData));	
+                break;
 
-				return Variant(variantMap);
-			}
+            default:
+                break;
+            }
+        }
 
-			return Variant();
-		}
-#endif
+        void moveAll(Variant& value)
+        {
+            pData_ = value.pData_;
+            type_ = value.type_;
+            value.pData_.pData = nullptr;
+            value.type_ = Type::Empty;
+        }
 
-	public:
-		Variant() 
-		{ 
-			type_ = Type::Empty;
-			pData_.pData = nullptr; 
-		}
+        static Variant _fromJson(const rapidjson::Value& value)
+        {
+            if (value.IsNull())
+            {
+                return Variant(nullptr);
+            }
+            else if (value.IsInt64())
+            {
+                return Variant(value.GetInt64());
+            }
+            else if (value.IsDouble())
+            {
+                return Variant(value.GetDouble());
+            }
+            else if (value.IsBool())
+            {
+                return Variant(value.GetBool());
+            }
+            else if (value.IsString())
+            {
+                return Variant(value.GetString());
+            }
+            else if (value.IsArray())
+            {
+                VariantVector variantVector;
+                if (!value.Empty())
+                {
+                    for (auto it = value.Begin(); it != value.End(); it++)
+                        variantVector.push_back(_fromJson(*it));
+                }
 
-		Variant(std::nullptr_t)
-		{
-			type_ = Type::Null;
-			pData_.pData = nullptr;
-		}
+                return Variant(variantVector);
+            }
+            else if (value.IsObject())
+            {
+                VariantMap variantMap;
+                for (auto it = value.MemberBegin(); it != value.MemberEnd(); it++)
+                    variantMap.insert(std::make_pair(it->name.GetString(), _fromJson(it->value)));
 
-		Variant(int value) 
-		:   Variant((int64_t)value) 
-		{
-		}
+                return Variant(variantMap);
+            }
 
-		Variant(int64_t value)
-		{
-			type_ = Type::Int;
-			pData_.intValue = value;
-		}
+            return Variant();
+        }
 
-		Variant(double value)
-		{
-			type_ = Type::Double;
-			pData_.doubleValue = value;
-		}
+        void initVector(const VariantVector& value)
+        {
+            type_ = Type::Vector;
+            pData_.pData = new VariantVector(value);
+        }
 
-		Variant(bool value)
-		{
-			type_ = Type::Bool;
-			pData_.boolValue = value;
-		}
 
-		Variant(const char* value) 
-		:   Variant(std::string(value)) 
-		{
-		}
+    public:
+        Variant() 
+        { 
+            type_ = Type::Empty;
+            pData_.pData = nullptr; 
+        }
 
-		Variant(const std::string& value)
-		{
-			type_ = Type::String;
-			pData_.pData = new std::string(value);
-		}
+        Variant(std::nullptr_t)
+        {
+            type_ = Type::Null;
+            pData_.pData = nullptr;
+        }
 
-		Variant(const VariantVector& value)
-		{
-			type_ = Type::Vector;
-			pData_.pData = new VariantVector(value);
-		}
+        Variant(int value) 
+        :   Variant((int64_t)value) 
+        {
+        }
 
-		Variant(const VariantMap& value)
-		{
-			type_ = Type::Map;
-			pData_.pData = new VariantMap(value);
-		}
+        Variant(int64_t value)
+        {
+            type_ = Type::Int;
+            pData_.intValue = value;
+        }
 
-		Variant(const Variant& value) 
-		{ 
-			copyAll(value);
-		}
+        Variant(double value)
+        {
+            type_ = Type::Double;
+            pData_.doubleValue = value;
+        }
 
-		Variant(Variant&& value) 
-		{ 
-			moveAll(value);
-		}
+        Variant(bool value)
+        {
+            type_ = Type::Bool;
+            pData_.boolValue = value;
+        }
 
-		Variant& operator=(const Variant& value)
-		{
-			copyAll(value);
-			return *this;
-		}
+        Variant(const char* value) 
+        :   Variant(std::string(value)) 
+        {
+        }
 
-		Variant& operator=(Variant&& value)
-		{
-			clear();
-			moveAll(value);
-			return *this;
-		}
+        Variant(const std::string& value)
+        {
+            type_ = Type::String;
+            pData_.pData = new std::string(value);
+        }
 
-		~Variant() 
-		{ 
-			clear(); 
-		}
+        template<typename T> Variant(const std::vector<T>& value)
+        {
+            VariantVector variantVector;
+            for (const auto& v : value)
+                variantVector.push_back(v);
 
-		Type type() const 
-		{ 
-			return type_; 
-		}
+            initVector(variantVector);
+        }
+
+        template<typename T> Variant(std::vector<T> && value)
+        {
+            VariantVector variantVector;
+            for (const auto& v : value)
+                variantVector.push_back(v);
+
+            initVector(variantVector);
+        }
+
+        Variant(const VariantVector& value)
+        {
+            initVector(value);
+        }
+
+        Variant(const VariantMap& value)
+        {
+            type_ = Type::Map;
+            pData_.pData = new VariantMap(value);
+        }
+
+        Variant(const Variant& value) 
+        { 
+            copyAll(value);
+        }
+
+        Variant(Variant&& value) 
+        { 
+            moveAll(value);
+        }
+
+        Variant& operator=(const Variant& value)
+        {
+            copyAll(value);
+            return *this;
+        }
+
+        Variant& operator=(Variant&& value)
+        {
+            clear();
+            moveAll(value);
+            return *this;
+        }
+
+        ~Variant() 
+        { 
+            clear(); 
+        }
+
+        Type type() const 
+        { 
+            return type_; 
+        }
    
-		bool isEmpty() const 
-		{ 
-			return (type_ == Type::Empty); 
-		}
+        bool isEmpty() const 
+        { 
+            return (type_ == Type::Empty); 
+        }
 
-		bool isNull() const 
-		{ 
-			return (type_ == Type::Null); 
-		}
+        bool isNull() const 
+        { 
+            return (type_ == Type::Null); 
+        }
 
-		int64_t toInt64() const
-		{
-			if (type_ == Type::Int)
-				return pData_.intValue;
+        int64_t toInt64() const
+        {
+            if (type_ == Type::Int)
+                return pData_.intValue;
 
-			assert(0);
-			return 0;
-		}
+            assert(0);
+            return 0;
+        }
 
-		double toDouble() const
-		{
-			switch (type_)
-			{
-			case Type::Double:
-				return pData_.doubleValue;
-			case Type::Int:
-				return (double)pData_.intValue;
-			default:
-				break;
-			}
+        double toDouble() const
+        {
+            switch (type_)
+            {
+            case Type::Double:
+                return pData_.doubleValue;
+            case Type::Int:
+                return (double)pData_.intValue;
+            default:
+                break;
+            }
 
-			assert(0);
-			return 0.0;
-		}
+            assert(0);
+            return 0.0;
+        }
 
-		bool toBool() const
-		{
-			if (type_ == Type::Bool)
-				return pData_.boolValue;
+        bool toBool() const
+        {
+            if (type_ == Type::Bool)
+                return pData_.boolValue;
 
-			assert(0);
-			return false;
-		}
+            assert(0);
+            return false;
+        }
 
-		const std::string& toString() const
-		{
-			if (type_ == Type::String)
-				return *(std::string*)pData_.pData;
+        const std::string& toString() const
+        {
+            if (type_ == Type::String)
+                return *(std::string*)pData_.pData;
 
-			assert(0);
-			static std::string vs;
-			return vs;
-		}
+            assert(0);
+            static std::string vs;
+            return vs;
+        }
 
-		const VariantVector& toVector() const
-		{
-			if (type_ == Type::Vector)
-				return *(VariantVector*)pData_.pData;
+        const VariantVector& toVector() const
+        {
+            if (type_ == Type::Vector)
+                return *(VariantVector*)pData_.pData;
 
-			assert(0);
-			static VariantVector vv;
-			return vv;
-		}
+            assert(0);
+            static VariantVector vv;
+            return vv;
+        }
 
-		const VariantMap& toMap() const
-		{
-			if (type_ == Type::Map)
-				return *(VariantMap*)pData_.pData;
+        const VariantMap& toMap() const
+        {
+            if (type_ == Type::Map)
+                return *(VariantMap*)pData_.pData;
 
-			assert(0);
-			static VariantMap vm;
-			return vm;
-		}
+            assert(0);
+            static VariantMap vm;
+            return vm;
+        }
 
-		std::string toJson() const
-		{
-			switch (type_)
-			{
-			case Type::Null:
-				return "null";
+        template<typename T> void value(T &) const 
+        {
+            static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
+        }
 
-			case Type::Int:
-				return std::to_string(pData_.intValue);
+        template<typename T> T value() const 
+        { 
+            static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
+            return T(); 
+        }
 
-			case Type::Double:
-				return std::to_string(pData_.doubleValue);
+        template<typename T> const T & valueByRef() const 
+        { 
+            static T t;
+            return t;
+        }
 
-			case Type::Bool:
-				return pData_.boolValue ? "true" : "false";
+        template<typename T> std::vector<T> valueVector() const
+        {
+            std::vector<T> outVector;
+            const VariantVector& variantVector = toVector();
+            for (const auto& v : variantVector)
+                outVector.push_back(std::move(v.value<T>()));
 
-			case Type::String:
-				return std::string("\"") + *((std::string*)pData_.pData) + "\"";
+            return outVector;
+        }
 
-			case Type::Vector:
-			{
-				std::string resultStr("[");
-				VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
-				for (Variant& jsonVariant : *pJsonVariantVector)
-				{
-					resultStr += jsonVariant.toJson();
-					resultStr += ",";
-				}
+        std::string toJson() const
+        {
+            switch (type_)
+            {
+            case Type::Null:
+                return "null";
 
-				if (!pJsonVariantVector->empty())
-					resultStr.pop_back();
+            case Type::Int:
+                return std::to_string(pData_.intValue);
 
-				resultStr += "]";
-				return resultStr;
-			}
-			break;
+            case Type::Double:
+                return std::to_string(pData_.doubleValue);
 
-			case Type::Map:
-			{
-				VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
-				if (!pJsonVariantMap->empty())
-				{
-					std::string resultStr("{");
-					for (auto& it : *pJsonVariantMap)
-						resultStr += "\"" + it.first + "\":" + it.second.toJson() + ",";
+            case Type::Bool:
+                return pData_.boolValue ? "true" : "false";
 
-					resultStr.pop_back();
-					resultStr.push_back('}');
-					return resultStr;
-				}
-			}
-			break;
+            case Type::String:
+                return std::string("\"") + *((std::string*)pData_.pData) + "\"";
 
-			default:
-				return "";
-			}
+            case Type::Vector:
+            {
+                std::string resultStr("[");
+                VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
+                for (Variant& jsonVariant : *pJsonVariantVector)
+                {
+                    resultStr += jsonVariant.toJson();
+                    resultStr += ",";
+                }
 
-			return "";
-		}
+                if (!pJsonVariantVector->empty())
+                    resultStr.pop_back();
 
-		static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
-		{
-#ifdef __RAPID_JSON_BACKEND
-			rapidjson::Document document;
-			auto& doc = document.Parse(jsonStr.c_str());
-			if (doc.HasParseError())
-			{
-				if (errorStr)
-					*errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
+                resultStr += "]";
+                return resultStr;
+            }
+            break;
 
-				return false;
-			}
-#else
-			nlohmann::json doc;
-			try
-			{
-				doc = nlohmann::json::parse(jsonStr);
-			}
-			catch (nlohmann::json::parse_error& e)
-			{
-				if (errorStr)
-					*errorStr = std::string("Parse error with code: ") + e.what();
+            case Type::Map:
+            {
+                VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
+                if (!pJsonVariantMap->empty())
+                {
+                    std::string resultStr("{");
+                    for (auto& it : *pJsonVariantMap)
+                        resultStr += "\"" + it.first + "\":" + it.second.toJson() + ",";
 
-				return false;
-			}
-#endif
-			jsonVariant = _fromJson(doc);
-			return true;
-		}
+                    resultStr.pop_back();
+                    resultStr.push_back('}');
+                    return resultStr;
+                }
+            }
+            break;
 
-#ifdef __RAPID_JSON_BACKEND
-		static bool fromJson(const std::string& jsonStr, const std::string& jsonSchema, Variant& jsonVariant, std::string* errorStr = nullptr)
-		{
-			rapidjson::Document document;
-			auto& doc = document.Parse(jsonStr.c_str());
-			if (doc.HasParseError())
-			{
-				if (errorStr)
-					*errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
+            default:
+                return "";
+            }
 
-				return false;
-			}
+            return "";
+        }
 
-			rapidjson::Document documentSchema;
-			if (documentSchema.Parse(jsonSchema.c_str()).HasParseError())
-			{
-				if (errorStr)
-					*errorStr = "Invalid json schema";
+        static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
+        {
+            rapidjson::Document document;
+            auto& doc = document.Parse(jsonStr.c_str());
+            if (doc.HasParseError())
+            {
+                if (errorStr)
+                    *errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
 
-				return false;
-			}
+                return false;
+            }
 
-			rapidjson::SchemaDocument schemaDocument(documentSchema);
-			rapidjson::SchemaValidator validator(schemaDocument);
+            jsonVariant = _fromJson(doc);
+            return true;
+        }
 
-			if (!document.Accept(validator))
-			{
-				if (errorStr)
-					*errorStr = "Not valid json according schema";
+        static bool fromJson(const std::string& jsonStr, const std::string& jsonSchema, Variant& jsonVariant, std::string* errorStr = nullptr)
+        {
+            rapidjson::Document document;
+            auto& doc = document.Parse(jsonStr.c_str());
+            if (doc.HasParseError())
+            {
+                if (errorStr)
+                    *errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
 
-				return false;
-			}
+                return false;
+            }
 
-			jsonVariant = _fromJson(doc);
-			return true;
-		}
-#endif
-	};
+            rapidjson::Document documentSchema;
+            if (documentSchema.Parse(jsonSchema.c_str()).HasParseError())
+            {
+                if (errorStr)
+                    *errorStr = "Invalid json schema";
+
+                return false;
+            }
+
+            rapidjson::SchemaDocument schemaDocument(documentSchema);
+            rapidjson::SchemaValidator validator(schemaDocument);
+
+            if (!document.Accept(validator))
+            {
+                if (errorStr)
+                    *errorStr = "Not valid json according schema";
+
+                return false;
+            }
+
+            jsonVariant = _fromJson(doc);
+            return true;
+        }
+    };
+
+    template<> void Variant::value<std::string>(std::string& t) const { t = toString(); }
+    template<> std::string Variant::value<std::string>() const { return toString(); }
+    template<> const std::string& Variant::valueByRef<std::string>() const { return toString(); }
+    template<> void Variant::value<bool>(bool& t) const { t = toBool(); }
+    template<> bool Variant::value<bool>() const { return toBool(); }
+    template<> void Variant::value<double>(double& t) const { t = toDouble(); }
+    template<> double Variant::value<double>() const { return toDouble(); }
+    template<> void Variant::value<int64_t>(int64_t& t) const { t = toInt64(); }
+    template<> int64_t Variant::value<int64_t>() const { return toInt64(); }
+    template<> void Variant::value<int>(int& t) const { t = (int)toInt64(); }
+    template<> int Variant::value<int>() const { return (int)toInt64(); }
+    template<> void Variant::value<VariantVector>(VariantVector& t) const { t = toVector(); }
+    template<> const VariantVector & Variant::valueByRef<VariantVector>() const { return toVector(); }
+    template<> void Variant::value<VariantMap>(VariantMap& t) const { t = toMap(); }
+    template<> const VariantMap & Variant::valueByRef<VariantMap>() const { return toMap(); }
 }
 
 #endif
