@@ -3,10 +3,12 @@
 
 #include <assert.h>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <rapidjson/document.h>
 #include <rapidjson/schema.h>
+
 
 namespace JsonSerialization
 {
@@ -32,7 +34,7 @@ namespace JsonSerialization
         {
             const auto it = this->find(key);
             if (it != this->end())
-                return it->second.value<T>();
+                return it->second.template value<T>();
 
             return defaultValue;
         }
@@ -50,6 +52,39 @@ namespace JsonSerialization
 
     typedef _VariantMap<std::string, Variant> VariantMap;
     typedef std::vector<Variant> VariantVector;
+
+    namespace JsonSerializationInternal
+    {
+        class JsonParser
+        {
+        public:
+            JsonParser() = default;
+            void fromJson(const std::string& jsonStr, const std::string& jsonSchema, JsonSerialization::Variant& jsonVariant) const;
+            void fromJson(const std::string& jsonStr, JsonSerialization::Variant& jsonVariant) const;
+
+        private:
+            void interpretSchema(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& internalSchemaVariant) const;
+            void compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const;
+            JsonSerialization::VariantVector parseArray(const char *& pData, size_t &len) const;
+            JsonSerialization::VariantMap parseMap(const char *& pData, size_t &len) const;
+            JsonSerialization::Variant parseObject(const char *& pData, size_t &len) const;
+            std::string parseKey(const char *& pData, size_t &len) const;
+            JsonSerialization::Variant parseValue(const char *& pData, size_t &len) const;
+            std::string parseString(const char *& pData, size_t &len) const;
+            bool parseBoolean(const char *& pData, size_t &len) const;
+            double parseNumber(const char *& pData, size_t &len) const;
+            JsonSerialization::Variant parseNull(const char *& pData, size_t &len) const;
+            void gotoValue(const char *& pData, size_t &len) const;
+            void skipComma(const char *& pData, size_t &len) const;
+            bool isDelimiter(char d) const;
+            bool isIgnorable(char d) const;
+            bool isValidKeyCharacter(char d) const;
+
+        private:
+            static std::set<char> delimiters_;
+            static std::set<char> ignorable_;
+        };
+    }
 
     class Variant
     {
@@ -168,7 +203,7 @@ namespace JsonSerialization
             value.pData_.pData = nullptr;
             value.type_ = Type::Empty;
         }
-
+/*
         static Variant _fromJson(const rapidjson::Value& value)
         {
             if (value.IsNull())
@@ -213,7 +248,7 @@ namespace JsonSerialization
 
             return Variant();
         }
-
+*/
         void initVector(const VariantVector& value)
         {
             type_ = Type::Vector;
@@ -496,6 +531,7 @@ namespace JsonSerialization
 
         static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
         {
+            /*
             rapidjson::Document document;
             auto& doc = document.Parse(jsonStr.c_str());
             if (doc.HasParseError())
@@ -507,11 +543,25 @@ namespace JsonSerialization
             }
 
             jsonVariant = _fromJson(doc);
+            */
+            try
+            {
+                JsonSerializationInternal::JsonParser().fromJson(jsonStr, jsonVariant);
+            }
+            catch(const std::exception& e)
+            {
+                if (errorStr)
+                    *errorStr = e.what();
+                
+                return false;
+            }
+
             return true;
         }
 
         static bool fromJson(const std::string& jsonStr, const std::string& jsonSchema, Variant& jsonVariant, std::string* errorStr = nullptr)
         {
+            /*
             rapidjson::Document document;
             auto& doc = document.Parse(jsonStr.c_str());
             if (doc.HasParseError())
@@ -543,6 +593,20 @@ namespace JsonSerialization
             }
 
             jsonVariant = _fromJson(doc);
+            */
+
+            try
+            {
+                JsonSerializationInternal::JsonParser().fromJson(jsonStr, jsonSchema, jsonVariant);
+            }
+            catch(const std::exception& e)
+            {
+                if (errorStr)
+                    *errorStr = e.what();
+                
+                return false;
+            }
+
             return true;
         }
     };
@@ -562,6 +626,351 @@ namespace JsonSerialization
     template<> const VariantVector & Variant::valueByRef<VariantVector>() const { return toVector(); }
     template<> void Variant::value<VariantMap>(VariantMap& t) const { t = toMap(); }
     template<> const VariantMap & Variant::valueByRef<VariantMap>() const { return toMap(); }
+}
+
+// #################################################################################################################
+// #################################################################################################################
+
+namespace JsonSerialization::JsonSerializationInternal
+{
+    std::set<char> JsonParser::delimiters_{'{', '}', '[', ']', ':', ',', '\"'};
+    std::set<char> JsonParser::ignorable_{' ', '\t', '\n', '\r'};
+
+    bool JsonParser::isDelimiter(char d) const
+    {
+        return delimiters_.find(d) != delimiters_.end();
+    }
+
+    bool JsonParser::isIgnorable(char d) const
+    {
+        return ignorable_.find(d) != ignorable_.end();
+    }
+
+    bool JsonParser::isValidKeyCharacter(char d) const
+    {
+        // todo actually allow all
+        return true;
+    }
+
+    void JsonParser::gotoValue(const char *& pData, size_t &len) const
+    {
+        bool foundDelimiter = false;
+        while (len > 1)
+        {
+            ++pData;
+            --len;
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == ':')
+                {
+                    if (foundDelimiter)
+                        throw std::runtime_error("Several delimiters ':'");
+
+                    foundDelimiter = true;
+                }
+                else
+                {
+                    if (!foundDelimiter)
+                        throw std::runtime_error("Expected ':'");
+
+                    return;
+                }
+            }
+        }
+
+        throw std::runtime_error("Expected value delimiter");
+    }
+
+    std::string JsonParser::parseKey(const char *& pData, size_t &len) const
+    {
+        std::string key;
+        while (len > 1)
+        {
+            ++pData;
+            --len;
+            char c = *pData;
+            if (!isValidKeyCharacter(c))
+                throw std::runtime_error("Invalid key character");
+            
+            if (c == '\"') 
+                return key;                
+
+            key += c;
+        }
+
+        throw std::runtime_error("Missing end of the key");
+    }
+
+    std::string JsonParser::parseString(const char *& pData, size_t &len) const
+    {
+        std::string potentionalString;
+        while (len > 1)
+        {
+            ++pData;
+            --len;
+            char c = *pData;
+            if (c == '\"')
+            {
+                ++pData;
+                --len;
+                return potentionalString;
+            }
+
+            potentionalString += c;
+        }
+
+        throw std::runtime_error("Not finished string value reading");
+    }
+
+    bool JsonParser::parseBoolean(const char *& pData, size_t &len) const
+    {
+        if (len > 4)
+        {
+            if (strncmp(pData, "true", 4) == 0)
+            {
+                pData += 4;
+                len -= 4;
+                return true;
+            }
+            else if (strncmp(pData, "false", 5) == 0)
+            {
+                pData += 5;
+                len -= 5;
+                return false;
+            }
+        }
+
+        throw std::runtime_error("Unable to parse boolean value");
+    }
+
+    double JsonParser::parseNumber(const char *& pData, size_t &len) const
+    {
+        std::string potentionalNumber;
+        while (len > 1)
+        {
+            char c = *pData;
+            if (isdigit(c) || c == '.')
+            {
+                potentionalNumber += c;
+            }
+            else
+            {
+                try
+                {
+                    return std::stod(potentionalNumber);
+                }
+                catch (const std::invalid_argument&) {
+                    throw std::runtime_error("Inval;id argument when number converting");
+                }
+                catch (const std::out_of_range&) {
+                    throw std::runtime_error("Out of range value when number converting");
+                }
+            }
+
+            ++pData;
+            --len;
+        }
+
+        throw std::runtime_error("Not finished number value reading");
+    }
+
+    JsonSerialization::Variant JsonParser::parseNull(const char *& pData, size_t &len) const
+    {
+        if (len > 4 && strncmp(pData, "null", 4) == 0)
+        {
+            pData += 4;
+            len -= 4;
+            return JsonSerialization::Variant(nullptr);
+        }
+
+        throw std::runtime_error("Unable to parse null value");
+    }
+
+    JsonSerialization::Variant JsonParser::parseValue(const char *& pData, size_t &len) const
+    {
+        while (len > 1)
+        {
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == '{')
+                    return JsonSerialization::Variant(parseMap(pData, len));
+                else if (c == '[')
+                    return JsonSerialization::Variant(parseArray(pData, len));
+                else if (c == '\"')
+                    return JsonSerialization::Variant(parseString(pData, len));
+                else if (c == 't' || c == 'f')
+                    return JsonSerialization::Variant(parseBoolean(pData, len));
+                else if (c == 'n')
+                    return JsonSerialization::Variant(parseNull(pData, len));
+                else if (isdigit(c) || c == '.')
+                    return JsonSerialization::Variant(parseNumber(pData, len));
+                else
+                    throw std::runtime_error("Unknown character when parsing value");
+            }
+
+            ++pData;
+            --len;
+        }
+
+        throw std::runtime_error("No value to parse");
+    }
+
+    void JsonParser::skipComma(const char *& pData, size_t &len) const
+    {
+        bool hasComma = false;
+        while (len > 1)
+        {
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == ',')
+                {
+                    if (hasComma)
+                        std::runtime_error("Double comma delimiter");
+
+                    hasComma = true;
+                }
+                else if (c == ']' || c == '}' || c == '\"')
+                {
+                    --pData;
+                    ++len;
+                    return;
+                }
+                else
+                {
+                     std::runtime_error("Uknown character - comma expected");
+                }
+            }
+            
+            ++pData;
+            --len;
+        }
+
+        std::runtime_error("Comma problem");
+    }
+
+    JsonSerialization::VariantVector JsonParser::parseArray(const char *& pData, size_t &len) const
+    {
+        JsonSerialization::VariantVector variantVector;
+        while (len > 1)
+        {
+            ++pData;
+            --len;
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == ']')
+                {
+                    return variantVector;
+                }
+
+                JsonSerialization::Variant value = parseValue(pData, len);
+                variantVector.push_back(value);
+                skipComma(pData, len);
+            }
+        }
+
+        if (pData[0] == ']')
+            return variantVector;
+
+        throw std::runtime_error("Unfinished vector");
+    }
+
+    JsonSerialization::VariantMap JsonParser::parseMap(const char *& pData, size_t &len) const
+    {
+        JsonSerialization::VariantMap variantMap;
+        while (len > 1)
+        {
+            ++pData;
+            --len;
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == '\"')
+                {
+                    std::string key = parseKey(pData, len);
+                    gotoValue(pData, len);
+                    JsonSerialization::Variant value = parseValue(pData, len);
+                    variantMap.insert(std::make_pair(key, value));
+                    skipComma(pData, len);
+                }
+                else if (c == '}')
+                {
+                    return variantMap;
+                }
+                else if (c == ',')
+                {
+                    if (variantMap.empty())
+                        throw std::runtime_error("Comma on empty object");
+                }
+                else
+                {
+                    throw std::runtime_error("Wrong character in json");
+                }
+            }
+        }
+
+        if (pData[0] == '}')
+            return variantMap;
+
+        throw std::runtime_error("Unfinished map");
+    }
+
+    JsonSerialization::Variant JsonParser::parseObject(const char *& pData, size_t &len) const
+    {
+        while (len > 0)
+        {
+            char c = *pData;
+            if (!isIgnorable(c))
+            {
+                if (c == '[')
+                    return JsonSerialization::Variant(parseArray(pData, len));
+                else if (c == '{')
+                    return JsonSerialization::Variant(parseMap(pData, len));
+                else
+                    throw std::runtime_error("Invalid json - first char");
+            }
+
+            ++pData;
+            --len;
+        }
+
+        throw std::runtime_error("Missing end of the object");
+    }
+
+    void JsonParser::fromJson(const std::string& jsonStr, const std::string& jsonSchema, JsonSerialization::Variant& jsonVariant) const
+    {
+        fromJson(jsonStr, jsonVariant);
+        std::string r = jsonVariant.toJson();
+
+        JsonSerialization::Variant schemaVariant, schemaVariantInternal;
+        fromJson(jsonSchema, schemaVariant);
+        interpretSchema(schemaVariant, schemaVariantInternal);
+        fromJson(jsonStr, jsonVariant);
+        compareVariantsAccordingSchema(schemaVariantInternal, jsonVariant);
+    }
+
+    void JsonParser::fromJson(const std::string& jsonStr, JsonSerialization::Variant& jsonVariant) const
+    {
+        const char *pData = jsonStr.c_str();
+        size_t len = jsonStr.size();
+        if (len < 2)
+            throw std::runtime_error("No short json");
+
+        jsonVariant = parseObject(pData, len);
+    }
+
+    void JsonParser::interpretSchema(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& internalSchemaVariant) const
+    {
+
+    }
+
+    void JsonParser::compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const
+    {
+
+    }
 }
 
 #endif
