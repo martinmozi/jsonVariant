@@ -789,25 +789,32 @@ namespace JsonSerialization::JsonSerializationInternal
 
     JsonSerialization::Variant JsonParser::parseValue(const char *& pData, size_t &len) const
     {
+        JsonSerialization::Variant variant;
         while (len > 1)
         {
             char c = *pData;
             if (!isIgnorable(c))
             {
                 if (c == '{')
-                    return JsonSerialization::Variant(parseMap(pData, len));
+                    variant = JsonSerialization::Variant(parseMap(pData, len));
                 else if (c == '[')
-                    return JsonSerialization::Variant(parseArray(pData, len));
+                    variant = JsonSerialization::Variant(parseArray(pData, len));
                 else if (c == '\"')
-                    return JsonSerialization::Variant(parseString(pData, len));
+                    variant = JsonSerialization::Variant(parseString(pData, len));
                 else if (c == 't' || c == 'f')
-                    return JsonSerialization::Variant(parseBoolean(pData, len));
+                    variant = JsonSerialization::Variant(parseBoolean(pData, len));
                 else if (c == 'n')
-                    return JsonSerialization::Variant(parseNull(pData, len));
+                    variant = JsonSerialization::Variant(parseNull(pData, len));
                 else if (isdigit(c) || c == '.')
-                    return JsonSerialization::Variant(parseNumber(pData, len));
+                {
+                    double d = parseNumber(pData, len);
+                    variant = (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
+                }
                 else
                     throw std::runtime_error("Unknown character when parsing value");
+
+                skipComma(pData, len);
+                return variant;
             }
 
             ++pData;
@@ -819,7 +826,7 @@ namespace JsonSerialization::JsonSerializationInternal
 
     void JsonParser::skipComma(const char *& pData, size_t &len) const
     {
-        bool hasComma = false;
+        bool commaFound = false;
         while (len > 1)
         {
             char c = *pData;
@@ -827,20 +834,16 @@ namespace JsonSerialization::JsonSerializationInternal
             {
                 if (c == ',')
                 {
-                    if (hasComma)
+                    if (commaFound)
                         std::runtime_error("Double comma delimiter");
 
-                    hasComma = true;
+                    commaFound = true;
                 }
-                else if (c == ']' || c == '}' || c == '\"')
+                else
                 {
                     --pData;
                     ++len;
                     return;
-                }
-                else
-                {
-                     std::runtime_error("Uknown character - comma expected");
                 }
             }
             
@@ -863,17 +866,15 @@ namespace JsonSerialization::JsonSerializationInternal
             {
                 if (c == ']')
                 {
+                    ++pData;
+                    --len;
                     return variantVector;
                 }
 
                 JsonSerialization::Variant value = parseValue(pData, len);
                 variantVector.push_back(value);
-                skipComma(pData, len);
             }
         }
-
-        if (pData[0] == ']')
-            return variantVector;
 
         throw std::runtime_error("Unfinished vector");
     }
@@ -888,22 +889,19 @@ namespace JsonSerialization::JsonSerializationInternal
             char c = *pData;
             if (!isIgnorable(c))
             {
+                if (c == '}')
+                {
+                    ++pData;
+                    --len;
+                    return variantMap;
+                }
+
                 if (c == '\"')
                 {
                     std::string key = parseKey(pData, len);
                     gotoValue(pData, len);
                     JsonSerialization::Variant value = parseValue(pData, len);
                     variantMap.insert(std::make_pair(key, value));
-                    skipComma(pData, len);
-                }
-                else if (c == '}')
-                {
-                    return variantMap;
-                }
-                else if (c == ',')
-                {
-                    if (variantMap.empty())
-                        throw std::runtime_error("Comma on empty object");
                 }
                 else
                 {
@@ -911,9 +909,6 @@ namespace JsonSerialization::JsonSerializationInternal
                 }
             }
         }
-
-        if (pData[0] == '}')
-            return variantMap;
 
         throw std::runtime_error("Unfinished map");
     }
@@ -942,9 +937,6 @@ namespace JsonSerialization::JsonSerializationInternal
 
     void JsonParser::fromJson(const std::string& jsonStr, const std::string& jsonSchema, JsonSerialization::Variant& jsonVariant) const
     {
-        fromJson(jsonStr, jsonVariant);
-        std::string r = jsonVariant.toJson();
-
         JsonSerialization::Variant schemaVariant, schemaVariantInternal;
         fromJson(jsonSchema, schemaVariant);
         interpretSchema(schemaVariant, schemaVariantInternal);
