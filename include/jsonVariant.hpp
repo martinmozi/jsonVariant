@@ -76,13 +76,9 @@ namespace JsonSerialization
             JsonSerialization::Variant parseNull(const char *& pData, size_t &len) const;
             void gotoValue(const char *& pData, size_t &len) const;
             void skipComma(const char *& pData, size_t &len) const;
-            bool isDelimiter(char d) const;
+            std::string trim(const std::string& jsonStr) const;
             bool isIgnorable(char d) const;
             bool isValidKeyCharacter(char d) const;
-
-        private:
-            static std::set<char> delimiters_;
-            static std::set<char> ignorable_;
         };
     }
 
@@ -531,7 +527,7 @@ namespace JsonSerialization
 
         static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
         {
-            /*
+           /* 
             rapidjson::Document document;
             auto& doc = document.Parse(jsonStr.c_str());
             if (doc.HasParseError())
@@ -633,17 +629,9 @@ namespace JsonSerialization
 
 namespace JsonSerialization::JsonSerializationInternal
 {
-    std::set<char> JsonParser::delimiters_{'{', '}', '[', ']', ':', ',', '\"'};
-    std::set<char> JsonParser::ignorable_{' ', '\t', '\n', '\r'};
-
-    bool JsonParser::isDelimiter(char d) const
+    inline bool JsonParser::isIgnorable(char d) const
     {
-        return delimiters_.find(d) != delimiters_.end();
-    }
-
-    bool JsonParser::isIgnorable(char d) const
-    {
-        return ignorable_.find(d) != ignorable_.end();
+        return (d == ' ' || d == '\n' || d == '\t' || d == '\r');
     }
 
     bool JsonParser::isValidKeyCharacter(char d) const
@@ -660,22 +648,19 @@ namespace JsonSerialization::JsonSerializationInternal
             ++pData;
             --len;
             char c = *pData;
-            if (!isIgnorable(c))
+            if (c == ':')
             {
-                if (c == ':')
-                {
-                    if (foundDelimiter)
-                        throw std::runtime_error("Several delimiters ':'");
+                if (foundDelimiter)
+                    throw std::runtime_error("Several delimiters ':'");
 
-                    foundDelimiter = true;
-                }
-                else
-                {
-                    if (!foundDelimiter)
-                        throw std::runtime_error("Expected ':'");
+                foundDelimiter = true;
+            }
+            else
+            {
+                if (!foundDelimiter)
+                    throw std::runtime_error("Expected ':'");
 
-                    return;
-                }
+                return;
             }
         }
 
@@ -746,11 +731,12 @@ namespace JsonSerialization::JsonSerializationInternal
 
     double JsonParser::parseNumber(const char *& pData, size_t &len) const
     {
-        std::string potentionalNumber;
+        static std::string potentionalNumber(100, 0);
+        potentionalNumber.clear();
         while (len > 1)
         {
             char c = *pData;
-            if (isdigit(c) || c == '.')
+            if (isdigit(c) || c == '.' || c == '-')
             {
                 potentionalNumber += c;
             }
@@ -761,7 +747,7 @@ namespace JsonSerialization::JsonSerializationInternal
                     return std::stod(potentionalNumber);
                 }
                 catch (const std::invalid_argument&) {
-                    throw std::runtime_error("Inval;id argument when number converting");
+                    throw std::runtime_error("Invalid argument when number converting");
                 }
                 catch (const std::out_of_range&) {
                     throw std::runtime_error("Out of range value when number converting");
@@ -793,32 +779,31 @@ namespace JsonSerialization::JsonSerializationInternal
         while (len > 1)
         {
             char c = *pData;
-            if (!isIgnorable(c))
+            if (c == '{')
+                variant = JsonSerialization::Variant(parseMap(pData, len));
+            else if (c == '[')
+                variant = JsonSerialization::Variant(parseArray(pData, len));
+            else if (c == '\"')
+                variant = JsonSerialization::Variant(parseString(pData, len));
+            else if (c == 't' || c == 'f')
+                variant = JsonSerialization::Variant(parseBoolean(pData, len));
+            else if (c == 'n')
+                variant = JsonSerialization::Variant(parseNull(pData, len));
+            else if (isdigit(c) || c == '.' || c == '-')
             {
-                if (c == '{')
-                    variant = JsonSerialization::Variant(parseMap(pData, len));
-                else if (c == '[')
-                    variant = JsonSerialization::Variant(parseArray(pData, len));
-                else if (c == '\"')
-                    variant = JsonSerialization::Variant(parseString(pData, len));
-                else if (c == 't' || c == 'f')
-                    variant = JsonSerialization::Variant(parseBoolean(pData, len));
-                else if (c == 'n')
-                    variant = JsonSerialization::Variant(parseNull(pData, len));
-                else if (isdigit(c) || c == '.')
-                {
-                    double d = parseNumber(pData, len);
-                    variant = (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
-                }
-                else
-                    throw std::runtime_error("Unknown character when parsing value");
-
-                skipComma(pData, len);
-                return variant;
+                double d = parseNumber(pData, len);
+                variant = (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
             }
+            else
+                throw std::runtime_error("Unknown character when parsing value");
 
-            ++pData;
-            --len;
+            /*if (len > 0 && *pData == ',')
+            {
+                ++pData;
+                --len;
+            }*/
+            skipComma(pData, len);
+            return variant;
         }
 
         throw std::runtime_error("No value to parse");
@@ -826,27 +811,25 @@ namespace JsonSerialization::JsonSerializationInternal
 
     void JsonParser::skipComma(const char *& pData, size_t &len) const
     {
+        // todo
         bool commaFound = false;
         while (len > 1)
         {
             char c = *pData;
-            if (!isIgnorable(c))
+            if (c == ',')
             {
-                if (c == ',')
-                {
-                    if (commaFound)
-                        std::runtime_error("Double comma delimiter");
+                 if (commaFound)
+                    std::runtime_error("Double comma delimiter");
 
-                    commaFound = true;
-                }
-                else
-                {
-                    --pData;
-                    ++len;
-                    return;
-                }
+                commaFound = true;
             }
-            
+            else
+            {
+                --pData;
+                ++len;
+                return;
+            }
+
             ++pData;
             --len;
         }
@@ -862,18 +845,15 @@ namespace JsonSerialization::JsonSerializationInternal
             ++pData;
             --len;
             char c = *pData;
-            if (!isIgnorable(c))
-            {
-                if (c == ']')
+            if (c == ']')
                 {
-                    ++pData;
-                    --len;
-                    return variantVector;
-                }
+                 ++pData;
+                 --len;
+                 return variantVector;
+             }
 
-                JsonSerialization::Variant value = parseValue(pData, len);
-                variantVector.push_back(value);
-            }
+            JsonSerialization::Variant value = parseValue(pData, len);
+            variantVector.push_back(value);
         }
 
         throw std::runtime_error("Unfinished vector");
@@ -887,26 +867,23 @@ namespace JsonSerialization::JsonSerializationInternal
             ++pData;
             --len;
             char c = *pData;
-            if (!isIgnorable(c))
+            if (c == '}')
             {
-                if (c == '}')
-                {
-                    ++pData;
-                    --len;
-                    return variantMap;
-                }
+                ++pData;
+                --len;
+                return variantMap;
+            }
 
-                if (c == '\"')
-                {
-                    std::string key = parseKey(pData, len);
-                    gotoValue(pData, len);
-                    JsonSerialization::Variant value = parseValue(pData, len);
-                    variantMap.insert(std::make_pair(key, value));
-                }
-                else
-                {
-                    throw std::runtime_error("Wrong character in json");
-                }
+            if (c == '\"')
+            {
+                std::string key = parseKey(pData, len);
+                gotoValue(pData, len);
+                JsonSerialization::Variant value = parseValue(pData, len);
+                variantMap.insert(std::make_pair(key, value));
+            }
+            else
+            {
+                throw std::runtime_error("Wrong character in json");
             }
         }
 
@@ -918,15 +895,12 @@ namespace JsonSerialization::JsonSerializationInternal
         while (len > 0)
         {
             char c = *pData;
-            if (!isIgnorable(c))
-            {
-                if (c == '[')
-                    return JsonSerialization::Variant(parseArray(pData, len));
-                else if (c == '{')
-                    return JsonSerialization::Variant(parseMap(pData, len));
-                else
-                    throw std::runtime_error("Invalid json - first char");
-            }
+            if (c == '[')
+                return JsonSerialization::Variant(parseArray(pData, len));
+            else if (c == '{')
+                return JsonSerialization::Variant(parseMap(pData, len));
+            else
+                throw std::runtime_error("Invalid json - first char");
 
             ++pData;
             --len;
@@ -939,15 +913,40 @@ namespace JsonSerialization::JsonSerializationInternal
     {
         JsonSerialization::Variant schemaVariant, schemaVariantInternal;
         fromJson(jsonSchema, schemaVariant);
-        interpretSchema(schemaVariant, schemaVariantInternal);
         fromJson(jsonStr, jsonVariant);
+        interpretSchema(schemaVariant, schemaVariantInternal);
         compareVariantsAccordingSchema(schemaVariantInternal, jsonVariant);
+    }
+
+    std::string JsonParser::trim(const std::string& jsonStr) const
+    {
+        const char *pData = jsonStr.c_str();
+        size_t len = jsonStr.size();
+        std::string outStr(len, 0);
+        int j = 0;
+        char *p = (char*)outStr.data();
+        bool record = false;
+        for (size_t i = 0; i < len ;i++)
+        {
+            char c = pData[i];
+            if (c== '\"')
+                record = !record;
+
+            if (!isIgnorable(c) || record)
+            {
+                p[j] = c;
+                j++;
+            }
+        }
+
+        return outStr;
     }
 
     void JsonParser::fromJson(const std::string& jsonStr, JsonSerialization::Variant& jsonVariant) const
     {
-        const char *pData = jsonStr.c_str();
-        size_t len = jsonStr.size();
+        std::string _jsonStr = trim(jsonStr);
+        const char *pData = _jsonStr.c_str();
+        size_t len = _jsonStr.size();
         if (len < 2)
             throw std::runtime_error("No short json");
 
