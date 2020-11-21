@@ -75,7 +75,6 @@ namespace JsonSerialization
             double parseNumber(const char *& pData, size_t &len) const;
             JsonSerialization::Variant parseNull(const char *& pData, size_t &len) const;
             void gotoValue(const char *& pData, size_t &len) const;
-            void skipComma(const char *& pData, size_t &len) const;
             std::string trim(const std::string& jsonStr) const;
             bool isIgnorable(char d) const;
             bool isValidKeyCharacter(char d) const;
@@ -797,63 +796,30 @@ namespace JsonSerialization::JsonSerializationInternal
             else
                 throw std::runtime_error("Unknown character when parsing value");
 
-            /*if (len > 0 && *pData == ',')
-            {
-                ++pData;
-                --len;
-            }*/
-            skipComma(pData, len);
             return variant;
         }
 
         throw std::runtime_error("No value to parse");
     }
 
-    void JsonParser::skipComma(const char *& pData, size_t &len) const
-    {
-        // todo
-        bool commaFound = false;
-        while (len > 1)
-        {
-            char c = *pData;
-            if (c == ',')
-            {
-                 if (commaFound)
-                    std::runtime_error("Double comma delimiter");
-
-                commaFound = true;
-            }
-            else
-            {
-                --pData;
-                ++len;
-                return;
-            }
-
-            ++pData;
-            --len;
-        }
-
-        std::runtime_error("Comma problem");
-    }
-
     JsonSerialization::VariantVector JsonParser::parseArray(const char *& pData, size_t &len) const
     {
+         ++pData;
+        --len;
         JsonSerialization::VariantVector variantVector;
         while (len > 1)
         {
-            ++pData;
-            --len;
-            char c = *pData;
-            if (c == ']')
-                {
+            JsonSerialization::Variant value = parseValue(pData, len);
+            variantVector.push_back(value);
+            if (*pData == ']')
+            {
                  ++pData;
                  --len;
                  return variantVector;
-             }
+            }
 
-            JsonSerialization::Variant value = parseValue(pData, len);
-            variantVector.push_back(value);
+            ++pData;
+            --len;
         }
 
         throw std::runtime_error("Unfinished vector");
@@ -861,30 +827,32 @@ namespace JsonSerialization::JsonSerializationInternal
 
     JsonSerialization::VariantMap JsonParser::parseMap(const char *& pData, size_t &len) const
     {
+        ++pData;
+        --len;
         JsonSerialization::VariantMap variantMap;
         while (len > 1)
         {
-            ++pData;
-            --len;
-            char c = *pData;
-            if (c == '}')
+            if (*pData == '\"')
+            {
+                std::string key = parseKey(pData, len);
+                gotoValue(pData, len);
+                JsonSerialization::Variant value = parseValue(pData, len);
+                variantMap.insert(std::make_pair(key, value));
+            }            
+            else
+            {
+                throw std::runtime_error("Wrong character in json");
+            }
+
+            if (*pData == '}')
             {
                 ++pData;
                 --len;
                 return variantMap;
             }
 
-            if (c == '\"')
-            {
-                std::string key = parseKey(pData, len);
-                gotoValue(pData, len);
-                JsonSerialization::Variant value = parseValue(pData, len);
-                variantMap.insert(std::make_pair(key, value));
-            }
-            else
-            {
-                throw std::runtime_error("Wrong character in json");
-            }
+            ++pData;
+            --len;
         }
 
         throw std::runtime_error("Unfinished map");
