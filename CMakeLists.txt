@@ -11,22 +11,9 @@ include(CMakePackageConfigHelpers)
 
 include_directories("${CMAKE_SOURCE_DIR}/include")
 
-option(RAPIDJSON_BACKEND "Use rapidjson for parsing json" ON)
-option(JSON_CPP_BACKEND "Use rapidjson for parsing json" OFF)
 option(BUILD_EXAMPLES "Build and install examples (default OFF)" OFF)
 
 set(JSON_VARIANT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
-
-if (RAPIDJSON_BACKEND)
-    find_package(RapidJSON)
-    add_definitions(-D__RAPID_JSON_BACKEND)
-else()
-    if (JSON_CPP_BACKEND)
-        add_definitions(-D__JSON_CPP_BACKEND)
-    else()
-        error( "Use rapidjson or jsoncpp as a backend" )
-    endif()
-endif()
 
 if (BUILD_EXAMPLES)
     add_subdirectory("examples")
