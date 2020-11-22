@@ -3,12 +3,9 @@
 
 #include <assert.h>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
-#include <rapidjson/document.h>
-#include <rapidjson/schema.h>
-
+#include <stdexcept>
 
 namespace JsonSerialization
 {
@@ -63,7 +60,6 @@ namespace JsonSerialization
             void fromJson(const std::string& jsonStr, JsonSerialization::Variant& jsonVariant) const;
 
         private:
-            void interpretSchema(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& internalSchemaVariant) const;
             void compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const;
             JsonSerialization::VariantVector parseArray(const char *& pData) const;
             JsonSerialization::VariantMap parseMap(const char *& pData) const;
@@ -77,7 +73,6 @@ namespace JsonSerialization
             void gotoValue(const char *& pData) const;
             std::string trim(const std::string& jsonStr) const;
             bool isIgnorable(char d) const;
-            bool isValidKeyCharacter(char d) const;
         };
     }
 
@@ -198,58 +193,6 @@ namespace JsonSerialization
             value.pData_.pData = nullptr;
             value.type_ = Type::Empty;
         }
-/*
-        static Variant _fromJson(const rapidjson::Value& value)
-        {
-            if (value.IsNull())
-            {
-                return Variant(nullptr);
-            }
-            else if (value.IsInt64())
-            {
-                return Variant(value.GetInt64());
-            }
-            else if (value.IsDouble())
-            {
-                return Variant(value.GetDouble());
-            }
-            else if (value.IsBool())
-            {
-                return Variant(value.GetBool());
-            }
-            else if (value.IsString())
-            {
-                return Variant(value.GetString());
-            }
-            else if (value.IsArray())
-            {
-                VariantVector variantVector;
-                if (!value.Empty())
-                {
-                    for (auto it = value.Begin(); it != value.End(); it++)
-                        variantVector.push_back(_fromJson(*it));
-                }
-
-                return Variant(variantVector);
-            }
-            else if (value.IsObject())
-            {
-                VariantMap variantMap;
-                for (auto it = value.MemberBegin(); it != value.MemberEnd(); it++)
-                    variantMap.insert(std::make_pair(it->name.GetString(), _fromJson(it->value)));
-
-                return Variant(variantMap);
-            }
-
-            return Variant();
-        }
-*/
-        void initVector(const VariantVector& value)
-        {
-            type_ = Type::Vector;
-            pData_.pData = new VariantVector(value);
-        }
-
 
     public:
         Variant() 
@@ -288,7 +231,7 @@ namespace JsonSerialization
         }
 
         Variant(const char* value) 
-        :   Variant(std::string(value)) 
+        :   Variant(std::move(std::string(value))) 
         {
         }
 
@@ -298,27 +241,22 @@ namespace JsonSerialization
             pData_.pData = new std::string(value);
         }
 
-        template<typename T> Variant(const std::vector<T>& value)
+        Variant(std::string&& value) noexcept
         {
-            VariantVector variantVector;
-            for (const auto& v : value)
-                variantVector.push_back(v);
-
-            initVector(variantVector);
-        }
-
-        template<typename T> Variant(std::vector<T> && value)
-        {
-            VariantVector variantVector;
-            for (const auto& v : value)
-                variantVector.push_back(v);
-
-            initVector(variantVector);
+            type_ = Type::String;
+            pData_.pData = new std::string(std::move(value));
         }
 
         Variant(const VariantVector& value)
         {
-            initVector(value);
+            type_ = Type::Vector;
+            pData_.pData = new VariantVector(value);
+        }
+
+        Variant(VariantVector&& value) noexcept
+        {
+            type_ = Type::Vector;
+            pData_.pData = new VariantVector(std::move(value));
         }
 
         Variant(const VariantMap& value)
@@ -327,12 +265,18 @@ namespace JsonSerialization
             pData_.pData = new VariantMap(value);
         }
 
+        Variant(VariantMap && value) noexcept
+        {
+            type_ = Type::Map;
+            pData_.pData = new VariantMap(std::move(value));
+        }
+
         Variant(const Variant& value) 
         { 
             copyAll(value);
         }
 
-        Variant(Variant&& value) 
+        Variant(Variant&& value) noexcept
         { 
             moveAll(value);
         }
@@ -343,10 +287,14 @@ namespace JsonSerialization
             return *this;
         }
 
-        Variant& operator=(Variant&& value)
+        Variant& operator=(Variant&& value)noexcept
         {
-            clear();
-            moveAll(value);
+            if (this != &value)
+            {
+                clear();
+                moveAll(value);
+            }
+
             return *this;
         }
 
@@ -485,33 +433,37 @@ namespace JsonSerialization
 
             case Type::Vector:
             {
-                std::string resultStr("[");
                 VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
-                for (Variant& jsonVariant : *pJsonVariantVector)
+                if (pJsonVariantVector->empty())
                 {
-                    resultStr += jsonVariant.toJson();
-                    resultStr += ",";
+                    return "[]";
                 }
+                else
+                {
+                    std::string resultStr("[");
+                    for (Variant& jsonVariant : *pJsonVariantVector)
+                        resultStr += jsonVariant.toJson() + ",";
 
-                if (!pJsonVariantVector->empty())
-                    resultStr.pop_back();
-
-                resultStr += "]";
-                return resultStr;
+                    resultStr[resultStr.size() -1] = ']';
+                    return resultStr;
+                }
             }
             break;
 
             case Type::Map:
             {
                 VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
-                if (!pJsonVariantMap->empty())
+                if (pJsonVariantMap->empty())
+                {
+                    return "{}";
+                }
+                else
                 {
                     std::string resultStr("{");
                     for (auto& it : *pJsonVariantMap)
                         resultStr += "\"" + it.first + "\":" + it.second.toJson() + ",";
 
-                    resultStr.pop_back();
-                    resultStr.push_back('}');
+                    resultStr[resultStr.size() -1] = '}';
                     return resultStr;
                 }
             }
@@ -526,19 +478,6 @@ namespace JsonSerialization
 
         static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
         {
-           /* 
-            rapidjson::Document document;
-            auto& doc = document.Parse(jsonStr.c_str());
-            if (doc.HasParseError())
-            {
-                if (errorStr)
-                    *errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
-
-                return false;
-            }
-
-            jsonVariant = _fromJson(doc);
-            */
             try
             {
                 JsonSerializationInternal::JsonParser().fromJson(jsonStr, jsonVariant);
@@ -556,40 +495,6 @@ namespace JsonSerialization
 
         static bool fromJson(const std::string& jsonStr, const std::string& jsonSchema, Variant& jsonVariant, std::string* errorStr = nullptr)
         {
-            /*
-            rapidjson::Document document;
-            auto& doc = document.Parse(jsonStr.c_str());
-            if (doc.HasParseError())
-            {
-                if (errorStr)
-                    *errorStr = std::string("Parse error with code: ") + std::to_string(doc.GetParseError()) + " and offset: " + std::to_string(doc.GetErrorOffset());
-
-                return false;
-            }
-
-            rapidjson::Document documentSchema;
-            if (documentSchema.Parse(jsonSchema.c_str()).HasParseError())
-            {
-                if (errorStr)
-                    *errorStr = "Invalid json schema";
-
-                return false;
-            }
-
-            rapidjson::SchemaDocument schemaDocument(documentSchema);
-            rapidjson::SchemaValidator validator(schemaDocument);
-
-            if (!document.Accept(validator))
-            {
-                if (errorStr)
-                    *errorStr = "Not valid json according schema";
-
-                return false;
-            }
-
-            jsonVariant = _fromJson(doc);
-            */
-
             try
             {
                 JsonSerializationInternal::JsonParser().fromJson(jsonStr, jsonSchema, jsonVariant);
@@ -633,12 +538,6 @@ namespace JsonSerialization::JsonSerializationInternal
         return (d == ' ' || d == '\n' || d == '\t' || d == '\r');
     }
 
-    bool JsonParser::isValidKeyCharacter(char d) const
-    {
-        // todo actually allow all
-        return true;
-    }
-
     void JsonParser::gotoValue(const char *& pData) const
     {
         if(pData != NULL)
@@ -661,9 +560,6 @@ namespace JsonSerialization::JsonSerializationInternal
         {
             ++pData;
             char c = *pData;
-            if (!isValidKeyCharacter(c))
-                throw std::runtime_error("Invalid key character");
-            
             if (c == '\"') 
                 return key;                
 
@@ -701,7 +597,7 @@ namespace JsonSerialization::JsonSerializationInternal
         for (int i = 0; i < 4; i++)
         {
             char c = *pData;
-            pData ++;
+            ++pData;
             if (trueStr[i] != c)
                 t = false;
             else if (falseStr[i] != c)
@@ -722,8 +618,7 @@ namespace JsonSerialization::JsonSerializationInternal
 
     double JsonParser::parseNumber(const char *& pData) const
     {
-        static std::string potentionalNumber(100, 0);
-        potentionalNumber.clear();
+        std::string potentionalNumber;
         while (pData != NULL)
         {
             char c = *pData;
@@ -768,29 +663,30 @@ namespace JsonSerialization::JsonSerializationInternal
     JsonSerialization::Variant JsonParser::parseValue(const char *& pData) const
     {
         JsonSerialization::Variant variant;
-        while (pData != NULL)
+        char c = *pData;
+        if (c == '{')
+            variant = JsonSerialization::Variant(parseMap(pData));
+        else if (c == '[')
+            variant = JsonSerialization::Variant(parseArray(pData));
+        else if (c == '\"')
+            variant = JsonSerialization::Variant(parseString(pData));
+        else if (c == 't' || c == 'f')
+            variant = JsonSerialization::Variant(parseBoolean(pData));
+        else if (c == 'n')
+            variant = JsonSerialization::Variant(parseNull(pData));
+        else if (isdigit(c) || c == '.' || c == '-')
         {
-            char c = *pData;
-            if (c == '{')
-                return JsonSerialization::Variant(parseMap(pData));
-            else if (c == '[')
-                return JsonSerialization::Variant(parseArray(pData));
-            else if (c == '\"')
-                return JsonSerialization::Variant(parseString(pData));
-            else if (c == 't' || c == 'f')
-                return JsonSerialization::Variant(parseBoolean(pData));
-            else if (c == 'n')
-                return JsonSerialization::Variant(parseNull(pData));
-            else if (isdigit(c) || c == '.' || c == '-')
-            {
-                double d = parseNumber(pData);
-                return (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
-            }
-            else
-                throw std::runtime_error("Unknown character when parsing value");
+            double d = parseNumber(pData);
+            variant = (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
         }
+        else
+            throw std::runtime_error("Unknown character when parsing value");
 
-        throw std::runtime_error("No value to parse");
+        c = *pData;
+        if (c == ',' || c == '}' || c == ']')
+            return variant;
+
+        throw std::runtime_error("Missing delimiter");
     }
 
     JsonSerialization::VariantVector JsonParser::parseArray(const char *& pData) const
@@ -799,8 +695,7 @@ namespace JsonSerialization::JsonSerializationInternal
         JsonSerialization::VariantVector variantVector;
         while (pData != NULL)
         {
-            JsonSerialization::Variant value = parseValue(pData);
-            variantVector.push_back(value);
+            variantVector.emplace_back(parseValue(pData));
             if (*pData == ']')
             {
                  ++pData;
@@ -823,8 +718,7 @@ namespace JsonSerialization::JsonSerializationInternal
             {
                 std::string key = parseKey(pData);
                 gotoValue(pData);
-                JsonSerialization::Variant value = parseValue(pData);
-                variantMap.insert(std::make_pair(key, value));
+                variantMap.insert(std::make_pair(key, parseValue(pData)));
             }            
             else
             {
@@ -866,7 +760,6 @@ namespace JsonSerialization::JsonSerializationInternal
         JsonSerialization::Variant schemaVariant, schemaVariantInternal;
         fromJson(jsonSchema, schemaVariant);
         fromJson(jsonStr, jsonVariant);
-        interpretSchema(schemaVariant, schemaVariantInternal);
         compareVariantsAccordingSchema(schemaVariantInternal, jsonVariant);
     }
 
@@ -905,14 +798,9 @@ namespace JsonSerialization::JsonSerializationInternal
         jsonVariant = parseObject(pData);
     }
 
-    void JsonParser::interpretSchema(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& internalSchemaVariant) const
-    {
-
-    }
-
     void JsonParser::compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const
     {
-
+        // todo schema comparison - maybe separate class for schema
     }
 }
 
