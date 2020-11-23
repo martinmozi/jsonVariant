@@ -2,10 +2,12 @@
 #define __JSON_VARIANT_HPP
 
 #include <assert.h>
+#include <set>
 #include <map>
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <regex>
 
 namespace JsonSerialization
 {
@@ -36,7 +38,7 @@ namespace JsonSerialization
             return defaultValue;
         }
 
-        template<typename T> void value(const char* key, T & val, T defaultValue) const
+        template<typename T> void value(const char* key, T& val, T defaultValue) const
         {
             val = this->value(key, defaultValue);
         }
@@ -60,7 +62,6 @@ namespace JsonSerialization
             void fromJson(const std::string& jsonStr, JsonSerialization::Variant& jsonVariant) const;
 
         private:
-            void compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const;
             JsonSerialization::VariantVector parseArray(const char *& pData) const;
             JsonSerialization::VariantMap parseMap(const char *& pData) const;
             JsonSerialization::Variant parseObject(const char *& pData) const;
@@ -83,8 +84,7 @@ namespace JsonSerialization
         {
             Empty,
             Null,
-            Int,
-            Double,
+            Number,
             Bool,
             String,
             Vector,
@@ -95,8 +95,7 @@ namespace JsonSerialization
         typedef union 
         {
             bool boolValue;
-            int64_t intValue;
-            double doubleValue;
+            double numberValue;
             void* pData;
         } PDATA;
 
@@ -108,8 +107,7 @@ namespace JsonSerialization
         {
             switch (type_)
             {
-            case Type::Int:
-            case Type::Double:
+            case Type::Number:
             case Type::Bool:
                 break;
 
@@ -157,12 +155,8 @@ namespace JsonSerialization
                 pData_.pData = nullptr;
                 break;
 
-            case Type::Int:
-                pData_.intValue = value.pData_.intValue;
-                break;
-
-            case Type::Double:
-                pData_.doubleValue = value.pData_.doubleValue;
+            case Type::Number:
+                pData_.numberValue = value.pData_.numberValue;
                 break;
 
             case Type::Bool:
@@ -208,20 +202,14 @@ namespace JsonSerialization
         }
 
         Variant(int value) 
-        :   Variant((int64_t)value) 
+        :   Variant((double)value) 
         {
-        }
-
-        Variant(int64_t value)
-        {
-            type_ = Type::Int;
-            pData_.intValue = value;
         }
 
         Variant(double value)
         {
-            type_ = Type::Double;
-            pData_.doubleValue = value;
+            type_ = Type::Number;
+            pData_.numberValue = value;
         }
 
         Variant(bool value)
@@ -318,26 +306,19 @@ namespace JsonSerialization
             return (type_ == Type::Null); 
         }
 
-        int64_t toInt64() const
+        int toInt() const
         {
-            if (type_ == Type::Int)
-                return pData_.intValue;
+            if (type_ == Type::Number)
+                return (int)pData_.numberValue;
 
             assert(0);
             return 0;
         }
 
-        double toDouble() const
+        double toNumber() const
         {
-            switch (type_)
-            {
-            case Type::Double:
-                return pData_.doubleValue;
-            case Type::Int:
-                return (double)pData_.intValue;
-            default:
-                break;
-            }
+            if (type_ == Type::Number)
+                return pData_.numberValue;
 
             assert(0);
             return 0.0;
@@ -419,11 +400,8 @@ namespace JsonSerialization
             case Type::Null:
                 return "null";
 
-            case Type::Int:
-                return std::to_string(pData_.intValue);
-
-            case Type::Double:
-                return std::to_string(pData_.doubleValue);
+            case Type::Number:
+                return std::to_string(pData_.numberValue);
 
             case Type::Bool:
                 return pData_.boolValue ? "true" : "false";
@@ -516,12 +494,10 @@ namespace JsonSerialization
     template<> const std::string& Variant::valueByRef<std::string>() const { return toString(); }
     template<> void Variant::value<bool>(bool& t) const { t = toBool(); }
     template<> bool Variant::value<bool>() const { return toBool(); }
-    template<> void Variant::value<double>(double& t) const { t = toDouble(); }
-    template<> double Variant::value<double>() const { return toDouble(); }
-    template<> void Variant::value<int64_t>(int64_t& t) const { t = toInt64(); }
-    template<> int64_t Variant::value<int64_t>() const { return toInt64(); }
-    template<> void Variant::value<int>(int& t) const { t = (int)toInt64(); }
-    template<> int Variant::value<int>() const { return (int)toInt64(); }
+    template<> void Variant::value<double>(double& t) const { t = toNumber(); }
+    template<> double Variant::value<double>() const { return toNumber(); }
+    template<> void Variant::value<int>(int& t) const { t = (int)toInt(); }
+    template<> int Variant::value<int>() const { return (int)toInt(); }
     template<> void Variant::value<VariantVector>(VariantVector& t) const { t = toVector(); }
     template<> const VariantVector & Variant::valueByRef<VariantVector>() const { return toVector(); }
     template<> void Variant::value<VariantMap>(VariantMap& t) const { t = toMap(); }
@@ -533,6 +509,30 @@ namespace JsonSerialization
 
 namespace JsonSerialization::JsonSerializationInternal
 {
+    inline bool isInteger(double d)
+    {
+        return d == (int) d;
+    }
+
+    class SchemaValidator
+    {
+    public:
+        SchemaValidator() = default;
+        void validate(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& jsonVariant) const;
+
+    private:
+        const JsonSerialization::Variant& valueFromMap(const JsonSerialization::VariantMap& schemaVariantMap, const char* key, JsonSerialization::Variant::Type type) const;
+        bool valueFromMap(const JsonSerialization::VariantMap& schemaVariantMap, const char* key, JsonSerialization::Variant::Type type, const JsonSerialization::Variant *& variant) const;
+        void compare(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareMap(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareVector(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareString(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareNumber(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareInteger(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareBoolean(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+        void compareNull(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const;
+    };
+
     inline bool JsonParser::isIgnorable(char d) const
     {
         return (d == ' ' || d == '\n' || d == '\t' || d == '\r');
@@ -545,7 +545,7 @@ namespace JsonSerialization::JsonSerializationInternal
             ++pData;
             if (*pData == ':')
             {
-                *pData++;
+                pData++;
                 return;
             }
         }
@@ -677,7 +677,7 @@ namespace JsonSerialization::JsonSerializationInternal
         else if (isdigit(c) || c == '.' || c == '-')
         {
             double d = parseNumber(pData);
-            variant = (d == (int64_t)d) ? JsonSerialization::Variant((int64_t)d) : JsonSerialization::Variant(d);
+            variant = (d == (int)d) ? JsonSerialization::Variant((int)d) : JsonSerialization::Variant(d);
         }
         else
             throw std::runtime_error("Unknown character when parsing value");
@@ -760,7 +760,7 @@ namespace JsonSerialization::JsonSerializationInternal
         JsonSerialization::Variant schemaVariant, schemaVariantInternal;
         fromJson(jsonSchema, schemaVariant);
         fromJson(jsonStr, jsonVariant);
-        compareVariantsAccordingSchema(schemaVariantInternal, jsonVariant);
+        SchemaValidator().validate(schemaVariant, jsonVariant);
     }
 
     std::string JsonParser::trim(const std::string& jsonStr) const
@@ -798,9 +798,189 @@ namespace JsonSerialization::JsonSerializationInternal
         jsonVariant = parseObject(pData);
     }
 
-    void JsonParser::compareVariantsAccordingSchema(const JsonSerialization::Variant& jsonVariant, const JsonSerialization::Variant& schemaVariant) const
+    // #######################################################################################################################################################
+    // #######################################################################################################################################################
+
+    void SchemaValidator::validate(const JsonSerialization::Variant& schemaVariant, const JsonSerialization::Variant& jsonVariant) const
     {
-        // todo schema comparison - maybe separate class for schema
+        if (schemaVariant.type() != JsonSerialization::Variant::Type::Map)
+            throw std::runtime_error("Bad schema type");
+
+        compare(schemaVariant.toMap(), jsonVariant);
+    }
+
+    const JsonSerialization::Variant& SchemaValidator::valueFromMap(const JsonSerialization::VariantMap& schemaVariantMap, const char* key, JsonSerialization::Variant::Type type) const
+    {
+        const auto it = schemaVariantMap.find(key);
+        if (it == schemaVariantMap.end())
+            throw std::runtime_error("Missing type in schema");
+        
+        if (it->second.type() != type)
+            throw std::runtime_error("Expected string for type in schema");
+
+        return it->second;
+    }
+
+    bool SchemaValidator::valueFromMap(const JsonSerialization::VariantMap& schemaVariantMap, const char* key, JsonSerialization::Variant::Type type, const JsonSerialization::Variant *& variant) const
+    {
+        const auto it = schemaVariantMap.find(key);
+        if (it == schemaVariantMap.end())
+            return false;
+        
+        if (it->second.type() != type)
+            throw std::runtime_error("Expected string for type in schema");
+
+        variant = &it->second;
+        return true;
+    }
+
+    void SchemaValidator::compare(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+        const std::string & typeStr = valueFromMap(schemaVariantMap, "type", JsonSerialization::Variant::Type::String).toString();
+        if (typeStr == "object")
+        {
+            compareMap(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "array")
+        {
+            compareVector(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "integer")
+        {
+            compareInteger(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "number")
+        {
+            compareNumber(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "null")
+        {
+            compareNull(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "boolean")
+        {
+            compareBoolean(schemaVariantMap, jsonVariant);
+        }
+        else if (typeStr == "string")
+        {
+            compareString(schemaVariantMap, jsonVariant);
+        }
+        else
+        {
+            throw std::runtime_error("Unsupported type in json schema");
+        }
+    }
+
+    void SchemaValidator::compareMap(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+        std::set<std::string> required;
+        const JsonSerialization::VariantMap &propertiesVariantMap = valueFromMap(schemaVariantMap, "properties", JsonSerialization::Variant::Type::Map).toMap();
+        const JsonSerialization::Variant *pRequiredVariant = nullptr;
+        if (valueFromMap(schemaVariantMap, "required", JsonSerialization::Variant::Type::Vector, pRequiredVariant))
+        {
+            const JsonSerialization::VariantVector& requiredVariantVector = pRequiredVariant->toVector();
+            for (const auto &v : requiredVariantVector)
+                required.insert(v.toString());
+        }
+        if (jsonVariant.type() != JsonSerialization::Variant::Type::Map)
+            throw std::runtime_error("Map required");
+
+        const JsonSerialization::VariantMap &jsonVariantMap = jsonVariant.toMap();
+        for (const auto& it : propertiesVariantMap)
+        {
+            if (it.second.type() != JsonSerialization::Variant::Type::Map)
+                throw std::runtime_error(std::string("Missing map for key: ") + it.first);
+
+            auto iter = jsonVariantMap.find(it.first);
+            if (iter == jsonVariantMap.end() && required.find(it.first) != required.end())
+                throw std::runtime_error(std::string("Missing key in map: ") + it.first);
+            
+            compare(it.second.toMap(), iter->second);
+        }
+    }
+
+    void SchemaValidator::compareVector(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+
+    }
+
+    void SchemaValidator::compareString(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+        if (jsonVariant.type() != JsonSerialization::Variant::Type::String)
+            throw std::runtime_error("Expected string value");
+
+        const std::string& value = jsonVariant.toString();
+        const JsonSerialization::Variant *pMinLength = nullptr, *pMaxLength = nullptr, *pPattern = nullptr;
+        valueFromMap(schemaVariantMap, "minLength", JsonSerialization::Variant::Type::Number, pMinLength);
+        valueFromMap(schemaVariantMap, "maxLength", JsonSerialization::Variant::Type::Number, pMaxLength);
+        valueFromMap(schemaVariantMap, "pattern", JsonSerialization::Variant::Type::String, pPattern);
+        if (pMinLength && pMinLength->toInt() > value.size())
+            throw std::runtime_error(std::string("Too short string: ") + value);
+
+        if (pMaxLength && pMaxLength->toInt() < value.size())
+            throw std::runtime_error(std::string("Too long string: ") + value);
+
+        if (pPattern)
+        {
+            std::regex expr(pPattern->toString());
+            std::smatch sm;
+            if (! std::regex_match(value, sm, expr))
+                throw std::runtime_error(std::string("String doesn't match the pattern: ") + pPattern->toString());
+        }
+    }
+
+    void SchemaValidator::compareNumber(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+        if (jsonVariant.type() != JsonSerialization::Variant::Type::Number)
+            throw std::runtime_error("Expected numeric value");
+
+        double value = jsonVariant.toNumber();
+
+        const JsonSerialization::Variant *pMinimum = nullptr, *pMaximum = nullptr, *pExclusiveMinimum = nullptr, *pExclusiveMaximum = nullptr, *pMultipleOf = nullptr;
+        valueFromMap(schemaVariantMap, "minimum", JsonSerialization::Variant::Type::Number, pMinimum);
+        valueFromMap(schemaVariantMap, "maximum", JsonSerialization::Variant::Type::Number, pMaximum);
+        valueFromMap(schemaVariantMap, "exclusiveMinimum", JsonSerialization::Variant::Type::Number, pExclusiveMinimum);
+        valueFromMap(schemaVariantMap, "exclusiveMaximum", JsonSerialization::Variant::Type::Number, pExclusiveMaximum);
+        valueFromMap(schemaVariantMap, "multipleOf", JsonSerialization::Variant::Type::Number, pMultipleOf);
+        if (pMinimum && pMinimum->toNumber() > value)
+            throw std::runtime_error("Numeric value is smaller than minimum");
+
+        if (pMaximum && pMaximum->toNumber() < value)
+            throw std::runtime_error("Numeric value is greater than maximum");
+
+        if (pExclusiveMinimum && pExclusiveMinimum->toNumber() >= value)
+            throw std::runtime_error("Numeric value is smaller than exclusive minimum");
+
+        if (pExclusiveMaximum && pExclusiveMaximum->toNumber() <= value)
+            throw std::runtime_error("Numeric value is greater than exclusive maximum");
+
+        if (pMultipleOf)
+        {
+            double multipleOf = pMultipleOf->toNumber();
+            if (!isInteger(multipleOf) || multipleOf <= 0)
+                throw std::runtime_error("Multiple of has to be an positive number");
+
+            if (! isInteger(value / multipleOf))
+                throw std::runtime_error("Multiple of division must be an integer");
+    
+        }
+    }
+
+    void SchemaValidator::compareInteger(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+        compareNumber(schemaVariantMap, jsonVariant);
+        if (! isInteger(jsonVariant.toNumber()))
+            throw std::runtime_error("Expected integer value");
+    }
+
+    void SchemaValidator::compareBoolean(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+
+    }
+
+    void SchemaValidator::compareNull(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
+    {
+
     }
 }
 

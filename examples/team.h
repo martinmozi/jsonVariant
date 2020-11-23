@@ -14,12 +14,12 @@ struct Team
         std::string country;
 	};
 	
-	int64_t id;
+	int id;
 	std::string coach;
 	std::string assistant;
 	Address address;
 	std::vector<Player> players;
-	std::vector<int64_t> identificators;
+	std::vector<int> identificators;
 };
 
 #endif
