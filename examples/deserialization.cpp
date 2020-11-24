@@ -1,6 +1,8 @@
 #include "../include/jsonVariant.hpp"
 #include "team.h"
 
+#include <fstream>
+
 namespace
 {
     std::string jsonString(R"(
@@ -34,7 +36,7 @@ namespace
         "type": "object",
         "properties": {
             "id": { "type": "integer" },
-            "coach": { "type": "string" },
+            "coach": { "type": "string", "minLength": 8 },
             "address": {
                 "type": "object",
                 "properties": {
@@ -65,7 +67,6 @@ namespace
 
 int main()
 {
-    // assume that you have Team structure serialized in json string (with or without json validation schema)
     std::string errorStr;
     JsonSerialization::Variant variant;
     if (!JsonSerialization::Variant::fromJson(jsonString, validationSchema, variant, &errorStr))
@@ -76,7 +77,7 @@ int main()
 
     Team team;
     const JsonSerialization::VariantMap & objectMap = variant.toMap();
-    objectMap.value("id", team.id, (int64_t)-1); // retrieve with default value
+    objectMap.value("id", team.id, -1); // retrieve with default value
     objectMap("coach").value(team.coach); // in this approach "coach" must exist
     if (objectMap.contains("assistant") && !objectMap.isNull("assistant"))
         objectMap("assistant").value(team.assistant);

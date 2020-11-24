@@ -30,7 +30,7 @@ int main()
 
     JsonSerialization::VariantMap variantMap
     {
-        {"id", team.id},
+        {"id",  team.id},
         {"coach", team.coach},
         {"assistant", nullptr},
         {"address", std::move(JsonSerialization::VariantMap
@@ -45,5 +45,6 @@ int main()
 
     // convert final variant to json string
     printf("%s", JsonSerialization::Variant(variantMap).toJson().c_str());
+    
     return 1;
 }

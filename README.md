@@ -6,12 +6,12 @@ Copy the header file into your project or use cmake for installing header to you
 
 # Prerequisities
 
-The library is using rapidjson (https://github.com/Tencent/rapidjson) as a backend. The jsonschema validation is supported as well.
+No addtional dependencies except C++ standard libraries.
 
 # Build & Install
 
-* `cmake -DCMAKE_BUILD_TYPE=Release -DRAPIDJSON_BACKEND=ON -DBUILD_EXAMPLES=ON .` - Replace _Release_ with _Debug_ for a build with debug symbols.
-* `cmake . && make install` - use sudo on Linux for installing to system directories
+* `cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON .` - Replace _Release_ with _Debug_ for a build with debug symbols.
+* `cmake . && make install` - use sudo user for installing to system directories on Linux
 
 # Usage
 
