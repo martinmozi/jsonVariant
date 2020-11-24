@@ -901,7 +901,63 @@ namespace JsonSerialization::JsonSerializationInternal
 
     void SchemaValidator::compareVector(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
     {
+        const auto it = schemaVariantMap.find("items");
+        if (it == schemaVariantMap.end())
+            throw std::runtime_error("Expected items for schema vector");
 
+        const JsonSerialization::VariantMap* pSchemaVariantMap = nullptr;
+        const JsonSerialization::VariantVector* pSchemaVariantVector = nullptr;
+        if (it->second.type() == JsonSerialization::Variant::Type::Map)
+        {
+            pSchemaVariantMap = &it->second.toMap();
+        }
+        else if (it->second.type() == JsonSerialization::Variant::Type::Vector)
+        {
+            const auto & schemaVariantVector = it->second.toVector();
+            if (schemaVariantVector.empty())
+                throw std::runtime_error("Expected non empty schema vector");
+
+            if (schemaVariantVector.size() == 1)
+            {
+                const auto & schVariant = schemaVariantVector[0];
+                if (schVariant.type() != JsonSerialization::Variant::Type::Map)
+                    throw std::runtime_error("Expected map for items vector in schema");
+
+                pSchemaVariantMap = &schVariant.toMap();
+            }
+            else
+            {
+                pSchemaVariantVector = &schemaVariantVector;
+            }
+        }
+        else
+        {
+            throw std::runtime_error("Expected map or vector for items in schema");
+        }
+
+        if (jsonVariant.type() != JsonSerialization::Variant::Type::Vector)
+            throw std::runtime_error("Expected vector for items");
+
+        const auto & variantVector = jsonVariant.toVector();
+        if (pSchemaVariantMap != nullptr)
+        {
+            for (const auto& v : variantVector)
+                compare(*pSchemaVariantMap, v);
+        }
+        else if (pSchemaVariantVector != nullptr)
+        {
+            if (variantVector.size() != pSchemaVariantVector->size())
+                throw std::runtime_error("Different size for heterogenous schema vector and checked vector");
+
+            for (size_t i = 0; i < variantVector.size(); i++)
+            {
+                const auto& schVariant = pSchemaVariantVector->at(i);
+                if (schVariant.type() != JsonSerialization::Variant::Type::Map)
+                    throw std::runtime_error("Expected map in json schema vector");
+
+                compare(schVariant.toMap(), variantVector[i]);
+            }    
+        }
     }
 
     void SchemaValidator::compareString(const JsonSerialization::VariantMap& schemaVariantMap, const JsonSerialization::Variant& jsonVariant) const
@@ -914,10 +970,10 @@ namespace JsonSerialization::JsonSerializationInternal
         valueFromMap(schemaVariantMap, "minLength", JsonSerialization::Variant::Type::Number, pMinLength);
         valueFromMap(schemaVariantMap, "maxLength", JsonSerialization::Variant::Type::Number, pMaxLength);
         valueFromMap(schemaVariantMap, "pattern", JsonSerialization::Variant::Type::String, pPattern);
-        if (pMinLength && pMinLength->toInt() > value.size())
+        if (pMinLength && pMinLength->toInt() > (int)value.size())
             throw std::runtime_error(std::string("Too short string: ") + value);
 
-        if (pMaxLength && pMaxLength->toInt() < value.size())
+        if (pMaxLength && pMaxLength->toInt() < (int)value.size())
             throw std::runtime_error(std::string("Too long string: ") + value);
 
         if (pPattern)
