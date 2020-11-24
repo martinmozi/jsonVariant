@@ -8,7 +8,6 @@ endif()
 
 include(GNUInstallDirs) # Installation directories for `install` command
 include(CMakePackageConfigHelpers)
-
 include_directories("${CMAKE_SOURCE_DIR}/include")
 
 option(BUILD_EXAMPLES "Build and install examples (default OFF)" OFF)
@@ -17,6 +16,10 @@ set(JSON_VARIANT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 
 if (BUILD_EXAMPLES)
     add_subdirectory("examples")
+endif()
+
+if (BUILD_TESTS)
+    add_subdirectory("test")
 endif()
 
 #installing header
