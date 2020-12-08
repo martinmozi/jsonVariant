@@ -548,15 +548,17 @@ namespace JsonSerialization
             void validate(const Variant& schemaVariant, const Variant& jsonVariant) const;
 
         private:
-            const Variant* valueFromMap(const VariantMap& schemaVariantMap, const char* key, Variant::Type type, bool required) const;
-            void compare(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
-            void compareMap(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
-            void compareVector(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
+            const Variant* valueFromMap(const VariantMap& schemaVariantMap, const char* key, Variant::Type type, bool required, bool* isRef = nullptr) const;
+            void compare(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const;
+            void compareMap(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const;
+            void compareVector(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const;
             void compareString(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
             void compareNumber(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
             void compareInteger(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const;
             void checkBoolean(const Variant& jsonVariant) const;
             void checkNull(const Variant& jsonVariant) const;
+            const VariantMap& fromRef(const std::string &refPath,  const VariantMap& wholeSchemaVariantMap) const;
+            std::vector<std::string> tokenize(const std::string &str, char delim) const;
         };
 
         inline bool JsonParser::isIgnorable(char d) const
@@ -832,18 +834,35 @@ namespace JsonSerialization
             if (schemaVariant.type() != Variant::Type::Map)
                 throw std::runtime_error("Bad schema type");
 
-            compare(schemaVariant.toMap(), jsonVariant);
+            const auto& schemaVariantMap = schemaVariant.toMap();
+            compare(schemaVariantMap, jsonVariant, schemaVariantMap);
         }
 
-        const Variant* SchemaValidator::valueFromMap(const VariantMap& schemaVariantMap, const char* key, Variant::Type type, bool required) const
+        const Variant* SchemaValidator::valueFromMap(const VariantMap& schemaVariantMap, const char* key, Variant::Type type, bool required, bool *isRef) const
         {
             const auto it = schemaVariantMap.find(key);
             if (it == schemaVariantMap.end())
             {
                 if (required)
-                    throw std::runtime_error("Missing type in schema");
+                {
+                    const auto it = schemaVariantMap.find("$ref");
+                    if (it == schemaVariantMap.end())
+                    {
+                        throw std::runtime_error("Missing type in schema");
+                    }
+                    else
+                    {
+                        if (it->second.type() != Variant::Type::String)
+                            throw std::runtime_error("Expected string for $ref in schema");
+
+                        *isRef = true;
+                        return &it->second;
+                    }
+                }
                 else
+                {
                     return nullptr;
+                }
             }
             
             if (it->second.type() != type)
@@ -852,45 +871,90 @@ namespace JsonSerialization
             return &it->second;
         }
 
-        void SchemaValidator::compare(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const
+        std::vector<std::string> SchemaValidator::tokenize(const std::string &str, char delim) const
+        {
+            std::vector<std::string> outVector;
+            size_t start;
+            size_t end = 0;
+
+            while ((start = str.find_first_not_of(delim, end)) != std::string::npos)
+            {
+                end = str.find(delim, start);
+                std::string pathStr = str.substr(start, end - start);
+                if (pathStr != "#")
+                    outVector.push_back(pathStr);
+            }
+
+            return outVector;
+        }
+
+        const VariantMap& SchemaValidator::fromRef(const std::string &refPath,  const VariantMap& wholeSchemaVariantMap) const
+        {
+            std::vector<std::string> pathVector = tokenize(refPath, '/');
+            const VariantMap * pVariantMap = &wholeSchemaVariantMap;
+            for (const std::string & s : pathVector)
+            {
+                const auto it = pVariantMap->find(s);
+                if (it == pVariantMap->end())
+                    throw std::runtime_error("Unable find ref according path");
+
+                if (it->second.type() != Variant::Type::Map)
+                    throw std::runtime_error("Ref link is not valid");
+
+                pVariantMap = &it->second.toMap();
+
+            }
+
+            return *pVariantMap;
+        }
+
+        void SchemaValidator::compare(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const
         {
             // todo enum and const - not implemented
-            const std::string & typeStr = valueFromMap(schemaVariantMap, "type", Variant::Type::String, true)->toString();
-            if (typeStr == "object")
+            bool isRef = false;
+            const std::string & typeStr = valueFromMap(schemaVariantMap, "type", Variant::Type::String, true, &isRef)->toString();
+            if (isRef)
             {
-                compareMap(schemaVariantMap, jsonVariant);
-            }
-            else if (typeStr == "array")
-            {
-                compareVector(schemaVariantMap, jsonVariant);
-            }
-            else if (typeStr == "integer")
-            {
-                compareInteger(schemaVariantMap, jsonVariant);
-            }
-            else if (typeStr == "number")
-            {
-                compareNumber(schemaVariantMap, jsonVariant);
-            }
-            else if (typeStr == "null")
-            {
-                checkNull(jsonVariant);
-            }
-            else if (typeStr == "boolean")
-            {
-                checkBoolean(jsonVariant);
-            }
-            else if (typeStr == "string")
-            {
-                compareString(schemaVariantMap, jsonVariant);
+                compare(fromRef(typeStr, wholeSchemaVariantMap), jsonVariant, wholeSchemaVariantMap);
             }
             else
             {
-                throw std::runtime_error("Unsupported type in json schema");
+                if (typeStr == "object")
+                {
+                    compareMap(schemaVariantMap, jsonVariant, wholeSchemaVariantMap);
+                }
+                else if (typeStr == "array")
+                {
+                    compareVector(schemaVariantMap, jsonVariant, wholeSchemaVariantMap);
+                }
+                else if (typeStr == "integer")
+                {
+                    compareInteger(schemaVariantMap, jsonVariant);
+                }
+                else if (typeStr == "number")
+                {
+                    compareNumber(schemaVariantMap, jsonVariant);
+                }
+                else if (typeStr == "null")
+                {
+                    checkNull(jsonVariant);
+                }
+                else if (typeStr == "boolean")
+                {
+                    checkBoolean(jsonVariant);
+                }
+                else if (typeStr == "string")
+                {
+                    compareString(schemaVariantMap, jsonVariant);
+                }
+                else
+                {
+                    throw std::runtime_error("Unsupported type in json schema");
+                }
             }
         }
 
-        void SchemaValidator::compareMap(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const
+        void SchemaValidator::compareMap(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const
         {
             std::set<std::string> required;
             const VariantMap &propertiesVariantMap = valueFromMap(schemaVariantMap, "properties", Variant::Type::Map, true)->toMap();
@@ -913,8 +977,8 @@ namespace JsonSerialization
                 auto iter = jsonVariantMap.find(it.first);
                 if (iter == jsonVariantMap.end() && required.find(it.first) != required.end())
                     throw std::runtime_error(std::string("Missing key in map: ") + it.first);
-                
-                compare(it.second.toMap(), iter->second);
+
+                compare(it.second.toMap(), iter->second, wholeSchemaVariantMap);
             }
 
             const Variant *pMinProperties = valueFromMap(schemaVariantMap, "minProperties", Variant::Type::Number, false);
@@ -930,7 +994,7 @@ namespace JsonSerialization
                 throw std::runtime_error("not supported dependentRequired");
         }
 
-        void SchemaValidator::compareVector(const VariantMap& schemaVariantMap, const Variant& jsonVariant) const
+        void SchemaValidator::compareVector(const VariantMap& schemaVariantMap, const Variant& jsonVariant, const VariantMap& wholeSchemaVariantMap) const
         {
             const auto it = schemaVariantMap.find("items");
             if (it == schemaVariantMap.end())
@@ -973,7 +1037,7 @@ namespace JsonSerialization
             if (pSchemaVariantMap != nullptr)
             {
                 for (const auto& v : variantVector)
-                    compare(*pSchemaVariantMap, v);
+                    compare(*pSchemaVariantMap, v, wholeSchemaVariantMap);
             }
             else if (pSchemaVariantVector != nullptr)
             {
@@ -986,7 +1050,7 @@ namespace JsonSerialization
                     if (schVariant.type() != Variant::Type::Map)
                         throw std::runtime_error("Expected map in json schema vector");
 
-                    compare(schVariant.toMap(), variantVector[i]);
+                    compare(schVariant.toMap(), variantVector[i], wholeSchemaVariantMap);
                 }    
             }
 
