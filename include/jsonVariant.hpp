@@ -8,6 +8,12 @@
 #include <stdexcept>
 #include <regex>
 
+#ifdef _WIN32
+    std::string endLineStr("\r\n");
+#else
+    std::string endLineStr("\n");
+#endif
+
 namespace JsonSerialization
 {
     class Variant;
@@ -185,6 +191,85 @@ namespace JsonSerialization
             type_ = value.type_;
             value.pData_.pData = nullptr;
             value.type_ = Type::Empty;
+        }
+
+        std::string _toJson(int& intend) const
+        {
+            switch (type_)
+            {
+            case Type::Null:
+                return "null";
+
+            case Type::Number:
+                return std::to_string(pData_.numberValue);
+
+            case Type::Bool:
+                return pData_.boolValue ? "true" : "false";
+
+            case Type::String:
+                return std::string("\"") + *((std::string*)pData_.pData) + "\"";
+
+            case Type::Vector:
+            {
+                VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
+                if (pJsonVariantVector->empty())
+                {
+                    return "[]";
+                }
+                else
+                {
+                    intend += 4;
+                    std::string resultStr("[" + endLineStr);
+                    for (Variant& jsonVariant : *pJsonVariantVector)
+                    {
+                        if (intend > 0)
+                            resultStr += std::string(intend, ' ');
+
+                        resultStr += jsonVariant._toJson(intend) + "," + endLineStr;
+                    }
+
+                    intend -= 4;
+                    resultStr.pop_back();
+                    resultStr.pop_back();
+                    resultStr += endLineStr + std::string(intend, ' ') + "]";
+                    return resultStr;
+                }
+            }
+            break;
+
+            case Type::Map:
+            {
+                VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
+                if (pJsonVariantMap->empty())
+                {
+                    return "{}";
+                }
+                else
+                {
+                    std::string resultStr("{");
+                    intend += 4;
+                    for (auto& it : *pJsonVariantMap)
+                    {
+                        resultStr += endLineStr;
+                        if (intend > 0)
+                            resultStr += std::string(intend, ' ');
+
+                        resultStr += "\"" + it.first + "\": " + it.second._toJson(intend) + ",";
+                    }
+
+                    intend -= 4;
+                    resultStr.pop_back();
+                    resultStr += endLineStr + std::string(intend, ' ') + "}";
+                    return resultStr;
+                }
+            }
+            break;
+
+            default:
+                return "";
+            }
+
+            return "";
         }
 
     public:
@@ -479,6 +564,12 @@ namespace JsonSerialization
             }
 
             return "";
+        }
+
+        std::string toJson(bool pretty) const
+        {
+            int intend = 0;
+            return pretty ? _toJson(intend) : toJson();
         }
 
         static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr)
