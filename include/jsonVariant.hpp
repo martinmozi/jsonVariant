@@ -833,15 +833,16 @@ namespace JsonSerialization
             VariantMap variantMap;
             while (pData != NULL)
             {
+                bool isEmpty = false;
                 if (*pData == '\"')
                 {
                     std::string key = parseKey(pData);
                     gotoValue(pData);
                     variantMap.insert(std::make_pair(key, parseValue(pData)));
-                }            
+                }
                 else
                 {
-                    throw std::runtime_error("Wrong character in json");
+                    isEmpty = true;
                 }
 
                 if (*pData == '}')
@@ -851,6 +852,10 @@ namespace JsonSerialization
                 }
 
                 ++pData;
+                if (isEmpty) 
+                {
+                    throw std::runtime_error("Wrong character in json");
+                }
             }
 
             throw std::runtime_error("Unfinished map");
