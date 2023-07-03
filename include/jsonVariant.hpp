@@ -201,7 +201,7 @@ namespace JsonSerialization
                 return "null";
 
             case Type::Number:
-                return std::to_string(pData_.numberValue);
+                return std::abs(pData_.numberValue - (int64_t)pData_.numberValue) < std::numeric_limits<double>::epsilon() ? std::to_string((int64_t) pData_.numberValue) : std::to_string(pData_.numberValue);
 
             case Type::Bool:
                 return pData_.boolValue ? "true" : "false";
@@ -513,7 +513,7 @@ namespace JsonSerialization
                 return "null";
 
             case Type::Number:
-                return std::to_string(pData_.numberValue);
+                return std::abs(pData_.numberValue - (int64_t)pData_.numberValue) < std::numeric_limits<double>::epsilon() ? std::to_string((int64_t) pData_.numberValue) : std::to_string(pData_.numberValue);
 
             case Type::Bool:
                 return pData_.boolValue ? "true" : "false";
