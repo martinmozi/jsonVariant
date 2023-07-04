@@ -7,6 +7,7 @@
 #include <vector>
 #include <stdexcept>
 #include <regex>
+#include <limits>
 
 #ifdef _WIN32
     std::string endLineStr("\r\n");
