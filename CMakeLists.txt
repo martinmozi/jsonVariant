@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
-project(jsonVariant VERSION 1.0.0 LANGUAGES CXX)
+project(JsonVariant VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 if(NOT MSVC)
     add_compile_options(-W -Wextra -Wall -Werror -pedantic)
 endif()
@@ -13,6 +13,13 @@ include_directories("${CMAKE_SOURCE_DIR}/include")
 option(BUILD_EXAMPLES "Build and install examples (default OFF)" OFF)
 
 set(JSON_VARIANT_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+
+add_library(jsonVariant SHARED
+    src/jsonVariant.cpp
+    src/internal/jsonParser.cpp
+    src/internal/schemaValidator.cpp)
+
+target_include_directories(jsonVariant PUBLIC include)
 
 if (BUILD_EXAMPLES)
     add_subdirectory("examples")
