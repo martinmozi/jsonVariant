@@ -27,7 +27,6 @@ namespace JsonSerializationInternal
         JsonSerialization::Variant parseNull(const char *& pData) const;
         void gotoValue(const char *& pData) const;
         std::string trim(const std::string& jsonStr) const;
-        bool isIgnorable(char d) const;
     };
 }
 

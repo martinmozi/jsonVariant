@@ -368,41 +368,6 @@ const JsonSerialization::VariantMap& JsonSerialization::Variant::toMap() const
     throw std::runtime_error("Not map in variant");
 }
 
-template <typename T>
-void JsonSerialization::Variant::value(T &) const
-{
-    static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
-}
-
-template <typename T>
-T JsonSerialization::Variant::value() const
-{
-    static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
-}
-
-template <typename T>
-const T& JsonSerialization::Variant::valueByRef() const
-{
-    static_assert(sizeof(T) == -1, "Only specialized versions of this method are allowed!");
-}
-
-template <typename T>
-std::vector<T> JsonSerialization::Variant::valueVector() const
-{
-    std::vector<T> outVector;
-    const VariantVector &variantVector = toVector();
-    for (const auto &v : variantVector)
-        outVector.push_back(std::move(v.value<T>()));
-
-    return outVector;
-}
-
-template <typename T>
-void JsonSerialization::Variant::valueVector(std::vector<T> &val) const
-{
-    val = valueVector<T>();
-}
-
 std::string JsonSerialization::Variant::toJson() const
 {
     switch (type_)
@@ -503,48 +468,3 @@ bool JsonSerialization::Variant::fromJson(const std::string &jsonStr, const std:
 
     return true;
 }
-
-template <>
-void JsonSerialization::Variant::value<std::string>(std::string &t) const
-{
-    t = toString();
-}
-
-template <>
-std::string JsonSerialization::Variant::value<std::string>() const 
-{ 
-    return toString(); 
-}
-
-template <>
-const std::string &JsonSerialization::Variant::valueByRef<std::string>() const 
-{ 
-    return toString(); 
-}
-
-template <>
-void JsonSerialization::Variant::value<bool>(bool &t) const 
-{ 
-    t = toBool(); 
-}
-
-template <>
-bool JsonSerialization::Variant::value<bool>() const 
-{ 
-    return toBool(); }
-template <>
-void JsonSerialization::Variant::value<double>(double &t) const { t = toNumber(); }
-template <>
-double JsonSerialization::Variant::value<double>() const { return toNumber(); }
-template <>
-void JsonSerialization::Variant::value<int>(int &t) const { t = (int)toInt(); }
-template <>
-int JsonSerialization::Variant::value<int>() const { return (int)toInt(); }
-template <>
-void JsonSerialization::Variant::value<JsonSerialization::VariantVector>(JsonSerialization::VariantVector &t) const { t = toVector(); }
-template <>
-const JsonSerialization::VariantVector &JsonSerialization::Variant::valueByRef<JsonSerialization::VariantVector>() const { return toVector(); }
-template <>
-void JsonSerialization::Variant::value<JsonSerialization::VariantMap>(JsonSerialization::VariantMap &t) const { t = toMap(); }
-template <>
-const JsonSerialization::VariantMap &JsonSerialization::Variant::valueByRef<JsonSerialization::VariantMap>() const { return toMap(); }

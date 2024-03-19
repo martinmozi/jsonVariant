@@ -2,6 +2,13 @@
 #include "internal/schemaValidator.h"
 #include <stdexcept>
 
+namespace
+{
+    bool isIgnorable(char d) {
+        return d == ' ' || d == '\n' || d == '\t' || d == '\r';
+    }
+}
+
 void JsonSerializationInternal::JsonParser::fromJson(const std::string& jsonStr, const std::string& jsonSchema, JsonSerialization::Variant& jsonVariant) const {
      JsonSerialization::Variant schemaVariant, schemaVariantInternal;
      fromJson(jsonSchema, schemaVariant);
@@ -131,7 +138,7 @@ JsonSerialization::Variant JsonSerializationInternal::JsonParser::parseValue(con
     throw std::runtime_error("Missing delimiter");
 }
 
-std::string JsonSerialization::JsonParser::parseString(const char *& pData) const {
+std::string JsonSerializationInternal::JsonParser::parseString(const char *& pData) const {
     std::string potentionalString;
     while (pData != NULL)
     {
@@ -149,7 +156,7 @@ std::string JsonSerialization::JsonParser::parseString(const char *& pData) cons
     throw std::runtime_error("Not finished string value reading");
 }
 
-bool JsonSerialization::JsonParser::parseBoolean(const char *& pData) const {
+bool JsonSerializationInternal::JsonParser::parseBoolean(const char *& pData) const {
     bool t, f;
     t = f = true;
     static const char *trueStr = "true";
@@ -176,7 +183,7 @@ bool JsonSerialization::JsonParser::parseBoolean(const char *& pData) const {
     throw std::runtime_error("Unable to parse boolean value");
 }
 
-double JsonSerialization::JsonParser::parseNumber(const char *& pData) const {
+double JsonSerializationInternal::JsonParser::parseNumber(const char *& pData) const {
     std::string potentionalNumber;
     while (pData != NULL)
     {
@@ -205,7 +212,7 @@ double JsonSerialization::JsonParser::parseNumber(const char *& pData) const {
     throw std::runtime_error("Not finished number value reading");
 }
 
-JsonSerialization::Variant JsonSerialization::JsonParser::parseNull(const char *& pData) const {
+JsonSerialization::Variant JsonSerializationInternal::JsonParser::parseNull(const char *& pData) const {
     static const char *nullStr = "null";
     for (int i = 0; i < 4; i ++)
     {
@@ -218,7 +225,7 @@ JsonSerialization::Variant JsonSerialization::JsonParser::parseNull(const char *
     return JsonSerialization::Variant(nullptr);
 }
 
-void JsonSerialization::JsonParser::gotoValue(const char *& pData) const {
+void JsonSerializationInternal::JsonParser::gotoValue(const char *& pData) const {
     if(pData != NULL)
     {
         ++pData;
@@ -232,7 +239,7 @@ void JsonSerialization::JsonParser::gotoValue(const char *& pData) const {
     throw std::runtime_error("Expected value delimiter");
 }
 
-std::string JsonSerialization::JsonParser::trim(const std::string& jsonStr) const {
+std::string JsonSerializationInternal::JsonParser::trim(const std::string& jsonStr) const {
     const char *pData = jsonStr.c_str();
     size_t len = jsonStr.size();
     std::string outStr(len, 0);
@@ -253,8 +260,4 @@ std::string JsonSerialization::JsonParser::trim(const std::string& jsonStr) cons
     }
 
     return outStr;
-}
-
-bool JsonSerialization::JsonParser::isIgnorable(char d) const {
-    return (d == ' ' || d == '\n' || d == '\t' || d == '\r');
 }
