@@ -7,23 +7,22 @@
 
 namespace JsonSerialization
 {
+    enum class Type : char
+    {
+        Empty,
+        Null,
+        Number,
+        Bool,
+        String,
+        Vector,
+        Map
+    };
+
     class Variant;
     typedef std::map<std::string, Variant> VariantMap;
     typedef std::vector<Variant> VariantVector;
     class Variant
     {
-    public:
-        enum class Type : char
-        {
-            Empty,
-            Null,
-            Number,
-            Bool,
-            String,
-            Vector,
-            Map
-        };
-
     private:
         union PDATA
         {
@@ -56,7 +55,7 @@ namespace JsonSerialization
             for (const auto &v : value)
                 pVector->push_back(v);
 
-            type_ = JsonSerialization::Variant::Type::Vector;
+            type_ = JsonSerialization::Type::Vector;
             pData_.pData = pVector;
         }
 

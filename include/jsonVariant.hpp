@@ -952,7 +952,9 @@ namespace JsonSerialization
                         if (it->second.type() != Variant::Type::String)
                             throw std::runtime_error("Expected string for $ref in schema");
 
-                        *isRef = true;
+                        if (isRef)
+                            *isRef = true;
+                            
                         return &it->second;
                     }
                 }

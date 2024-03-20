@@ -22,11 +22,7 @@ else()
     set(LIB_TYPE STATIC)
 endif()
 
-add_library(jsonVariant ${LIB_TYPE}
-    src/jsonVariant.cpp
-    src/internal/jsonParser.cpp
-    src/internal/schemaValidator.cpp)
-
+add_library(jsonVariant ${LIB_TYPE} src/jsonVariant.cpp)
 target_include_directories(jsonVariant PRIVATE include)
 
 if (BUILD_EXAMPLES)
