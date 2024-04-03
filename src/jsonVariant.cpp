@@ -1105,3 +1105,20 @@ bool JsonSerialization::Variant::fromJson(const std::string &jsonStr, const std:
 
     return true;
 }
+
+void JsonSerialization::Variant::value(int &val) const
+{
+    val = toInt();
+}
+void JsonSerialization::Variant::value(double &val) const
+{
+    val = toNumber();
+}
+void JsonSerialization::Variant::value(bool &val) const
+{
+    val = toBool();
+}
+void JsonSerialization::Variant::value(std::string &val) const
+{
+    val = toString();
+}

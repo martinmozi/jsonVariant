@@ -7,6 +7,7 @@ struct Team
 	{
         std::string name;
         double averageScoring;
+		Player() : averageScoring(0.0) {}
 	};
 	struct Address
 	{

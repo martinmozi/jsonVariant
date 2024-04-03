@@ -648,7 +648,7 @@ namespace JsonSerialization {
             VariantMap variantMap;
             while (pData != NULL)
             {
-                bool isEmpty = false;
+                bool empty = false;
                 if (*pData == '\"')
                 {
                     std::string key = jsonParser_parseKey(pData);
@@ -657,7 +657,7 @@ namespace JsonSerialization {
                 }
                 else
                 {
-                    isEmpty = true;
+                    empty = true;
                 }
 
                 if (*pData == '}')
@@ -667,7 +667,7 @@ namespace JsonSerialization {
                 }
 
                 ++pData;
-                if (isEmpty) 
+                if (empty) 
                 {
                     throw std::runtime_error("Wrong character in json");
                 }
@@ -1071,35 +1071,35 @@ namespace JsonSerialization {
             throw std::runtime_error("Not map in variant");
         }
 
-        void value(int &value) const
+        void value(int &val) const
         {
-            value = toInt();
+            val = toInt();
         }
 
-        void value(double &value) const
+        void value(double &val) const
         {
-            value = toNumber();
+            val = toNumber();
         }
 
-        void value(bool &value) const
+        void value(bool &val) const
         {
-            value = toBool();
+            val = toBool();
         }
 
-        void value(std::string &value) const
+        void value(std::string &val) const
         {
-            value = toString();
+            val = toString();
         }
 
-        template<typename T> void valueVector(std::vector<T> &value) const
+        template<typename T> void valueVector(std::vector<T> &val) const
         {
             const VariantVector &variantVector = toVector();
-            value.clear();
+            val.clear();
             for (const auto &v : variantVector)
             {
                 T t;
                 v.value(t);
-                value.push_back(t);
+                val.push_back(t);
             }
         }
 

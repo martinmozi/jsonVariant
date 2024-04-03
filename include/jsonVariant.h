@@ -75,6 +75,21 @@ namespace JsonSerialization
         const std::string& toString() const;
         const VariantVector& toVector() const;
         const VariantMap& toMap() const;
+        void value(int &val) const;
+        void value(double &val) const;
+        void value(bool &val) const;
+        void value(std::string &val) const;
+        template<typename T> void valueVector(std::vector<T> &value) const
+        {
+            const VariantVector &variantVector = toVector();
+            value.clear();
+            for (const auto &v : variantVector)
+            {
+                T t;
+                v.value(t);
+                value.push_back(t);
+            }
+        }
 
         std::string toJson() const;
         std::string toJson(bool pretty) const;
