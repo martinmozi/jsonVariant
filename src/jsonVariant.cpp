@@ -50,19 +50,19 @@ namespace JsonSerializationInternal
             {
                 if (required)
                 {
-                    const auto it = schemaVariantMap.find("$ref");
-                    if (it == schemaVariantMap.end())
+                    const auto iter = schemaVariantMap.find("$ref");
+                    if (iter == schemaVariantMap.end())
                     {
                         throw std::runtime_error("Missing type in schema");
                     }
                     else
                     {
-                        if (it->second.type() != JsonSerialization::Type::String)
+                        if (iter->second.type() != JsonSerialization::Type::String)
                             throw std::runtime_error("Expected string for $ref in schema");
                         if (isRef != nullptr)
                             *isRef = true;
                         
-                        return &it->second;
+                        return &iter->second;
                     }
                 }
                 else

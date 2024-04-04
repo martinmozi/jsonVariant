@@ -129,7 +129,7 @@ namespace JsonSerialization {
 
             case JsonSerialization::Type::Map:
             {
-                VariantMap *pJsonVariantMap = (VariantMap *)pData_.pData;
+                VariantMap *pJsonVariantMap = reinterpret_cast<VariantMap*>(pData_.pData);
                 for (auto &it : *pJsonVariantMap)
                     it.second.clear();
 
@@ -233,7 +233,7 @@ namespace JsonSerialization {
 
             case JsonSerialization::Type::Map:
             {
-                VariantMap *pJsonVariantMap = (VariantMap *)pData_.pData;
+                VariantMap *pJsonVariantMap = reinterpret_cast<VariantMap*>(pData_.pData);
                 if (pJsonVariantMap->empty())
                 {
                     return "{}";
@@ -283,19 +283,19 @@ namespace JsonSerialization {
             {
                 if (required)
                 {
-                    const auto it = schemaVariantMap.find("$ref");
-                    if (it == schemaVariantMap.end())
+                    const auto iter = schemaVariantMap.find("$ref");
+                    if (iter == schemaVariantMap.end())
                     {
                         throw std::runtime_error("Missing type in schema");
                     }
                     else
                     {
-                        if (it->second.type() != JsonSerialization::Type::String)
+                        if (iter->second.type() != JsonSerialization::Type::String)
                             throw std::runtime_error("Expected string for $ref in schema");
                         if (isRef != nullptr)
                             *isRef = true;
                         
-                        return &it->second;
+                        return &iter->second;
                     }
                 }
                 else
@@ -507,13 +507,13 @@ namespace JsonSerialization {
         {
             if (jsonVariant.type() != JsonSerialization::Type::String)
                 throw std::runtime_error("Expected string value");
-            const std::string& value = jsonVariant.toString();
+            const std::string& val = jsonVariant.toString();
             const Variant *pMinLength = schemaValidator_valueFromMap(schemaVariantMap, "minLength", JsonSerialization::Type::Number, false);
-            if (pMinLength && pMinLength->toInt() > (int)value.size())
-                throw std::runtime_error(std::string("Too short string: ") + value);
+            if (pMinLength && pMinLength->toInt() > (int)val.size())
+                throw std::runtime_error(std::string("Too short string: ") + val);
             const Variant *pMaxLength = schemaValidator_valueFromMap(schemaVariantMap, "maxLength", JsonSerialization::Type::Number, false);
-            if (pMaxLength && pMaxLength->toInt() < (int)value.size())
-                throw std::runtime_error(std::string("Too long string: ") + value);
+            if (pMaxLength && pMaxLength->toInt() < (int)val.size())
+                throw std::runtime_error(std::string("Too long string: ") + val);
             const Variant *pPattern = schemaValidator_valueFromMap(schemaVariantMap, "pattern", JsonSerialization::Type::String, false);
             if (pPattern)
             {
@@ -558,20 +558,22 @@ namespace JsonSerialization {
 
         static void schemaValidator_compareNumber(const VariantMap& schemaVariantMap, const Variant& jsonVariant)
         {
-            if (jsonVariant.type() != JsonSerialization::Type::Number)
+            if (jsonVariant.type() != JsonSerialization::Type::Number) {
                 throw std::runtime_error("Expected numeric value");
-            double value = jsonVariant.toNumber();
+            }
+
+            double val = jsonVariant.toNumber();
             const Variant *pMinimum = schemaValidator_valueFromMap(schemaVariantMap, "minimum", JsonSerialization::Type::Number, false);
-            if (pMinimum && pMinimum->toNumber() > value)
+            if (pMinimum && pMinimum->toNumber() > val)
                 throw std::runtime_error("Numeric value is smaller than minimum");
             const Variant *pMaximum = schemaValidator_valueFromMap(schemaVariantMap, "maximum", JsonSerialization::Type::Number, false);
-            if (pMaximum && pMaximum->toNumber() < value)
+            if (pMaximum && pMaximum->toNumber() < val)
                 throw std::runtime_error("Numeric value is greater than maximum");
             const Variant *pExclusiveMinimum = schemaValidator_valueFromMap(schemaVariantMap, "exclusiveMinimum", JsonSerialization::Type::Number, false);
-            if (pExclusiveMinimum && pExclusiveMinimum->toNumber() >= value)
+            if (pExclusiveMinimum && pExclusiveMinimum->toNumber() >= val)
                 throw std::runtime_error("Numeric value is smaller than exclusive minimum");
             const Variant *pExclusiveMaximum = schemaValidator_valueFromMap(schemaVariantMap, "exclusiveMaximum", JsonSerialization::Type::Number, false);
-            if (pExclusiveMaximum && pExclusiveMaximum->toNumber() <= value)
+            if (pExclusiveMaximum && pExclusiveMaximum->toNumber() <= val)
                 throw std::runtime_error("Numeric value is greater than exclusive maximum");
             const Variant *pMultipleOf = schemaValidator_valueFromMap(schemaVariantMap, "multipleOf", JsonSerialization::Type::Number, false);
             if (pMultipleOf)
@@ -579,7 +581,7 @@ namespace JsonSerialization {
                 double multipleOf = pMultipleOf->toNumber();
                 if (! JsonSerializationInternal::isInteger(multipleOf) || multipleOf <= 0)
                     throw std::runtime_error("Multiple of has to be an positive number");
-                if (! JsonSerializationInternal::isInteger(value / multipleOf))
+                if (! JsonSerializationInternal::isInteger(val / multipleOf))
                     throw std::runtime_error("Multiple of division must be an integer");
             }
         }
@@ -869,82 +871,82 @@ namespace JsonSerialization {
         }
 
     public:
-        Variant()
+        explicit Variant()
         {
             type_ = Type::Empty;
             pData_.pData = nullptr;
         }
 
-        Variant(std::nullptr_t)
+        explicit Variant(std::nullptr_t)
         {
             type_ = Type::Null;
             pData_.pData = nullptr;
         }
 
-        Variant(int value)
+        explicit Variant(int value)
             : Variant((double)value)
         {
         }
 
-        Variant(double value)
+        explicit Variant(double value)
         {
             type_ = Type::Number;
             pData_.numberValue = value;
         }
 
-        Variant(bool value)
+        explicit Variant(bool value)
         {
             type_ = Type::Bool;
             pData_.boolValue = value;
         }
 
-        Variant(const char *value)
+        explicit Variant(const char *value)
             : Variant(std::move(std::string(value)))
         {
         }
 
-        Variant(const std::string &value)
+        explicit Variant(const std::string &value)
         {
             type_ = Type::String;
             pData_.pData = new std::string(value);
         }
 
-        Variant(std::string &&value) noexcept
+        explicit Variant(std::string &&value) noexcept
         {
             type_ = Type::String;
             pData_.pData = new std::string(std::move(value));
         }
 
-        Variant(const VariantVector &value)
+        explicit Variant(const VariantVector &value)
         {
             type_ = Type::Vector;
             pData_.pData = new VariantVector(value);
         }
 
-        Variant(VariantVector &&value) noexcept
+        explicit Variant(VariantVector &&value) noexcept
         {
             type_ = Type::Vector;
             pData_.pData = new VariantVector(std::move(value));
         }
 
-        Variant(const VariantMap &value)
+        explicit Variant(const VariantMap &value)
         {
             type_ = Type::Map;
             pData_.pData = new VariantMap(value);
         }
 
-        Variant(VariantMap &&value) noexcept
+        explicit Variant(VariantMap &&value) noexcept
         {
             type_ = Type::Map;
             pData_.pData = new VariantMap(std::move(value));
         }
 
-        Variant(const Variant &value)
+        explicit Variant(const Variant &value)
         {
             copyAll(value);
         }
 
-        Variant(Variant &&value) noexcept
+        explicit Variant(Variant &&value) noexcept
         {
             moveAll(value);
         }
@@ -953,7 +955,7 @@ namespace JsonSerialization {
         {
             VariantVector *pVector = new VariantVector;
             for (const auto& v : value)
-                pVector->push_back(v);
+                pVector->push_back(std::move(Variant(v)));
 
             type_ = Type::Vector;
             pData_.pData = pVector;
@@ -1121,7 +1123,7 @@ namespace JsonSerialization {
 
             case JsonSerialization::Type::Vector:
             {
-                VariantVector *pJsonVariantVector = (VariantVector*)pData_.pData;
+                VariantVector *pJsonVariantVector = reinterpret_cast<VariantVector*>(pData_.pData);
                 if (pJsonVariantVector->empty())
                 {
                     return "[]";
@@ -1140,7 +1142,7 @@ namespace JsonSerialization {
 
             case JsonSerialization::Type::Map:
             {
-                VariantMap *pJsonVariantMap = (VariantMap*)pData_.pData;
+                VariantMap *pJsonVariantMap = reinterpret_cast<VariantMap*>(pData_.pData);
                 if (pJsonVariantMap->empty())
                 {
                     return "{}";
