@@ -488,18 +488,12 @@ namespace JsonSerialization {
             const Variant *pMaxContains = schemaValidator_valueFromMap(schemaVariantMap, "maxContains", JsonSerialization::Type::Number, false);
             if (pMaxContains && pMaxContains->toInt() < (int)variantVector.size())
                 throw std::runtime_error("Too long vector");
-            const Variant *pUniqueItems = schemaValidator_valueFromMap(schemaVariantMap, "uniqueItems", JsonSerialization::Type::Number, false);
+            const Variant *pUniqueItems = schemaValidator_valueFromMap(schemaVariantMap, "uniqueItems", JsonSerialization::Type::Bool, false);
             if (pUniqueItems && pUniqueItems->toBool() && variantVector.size() > 1)
             {
-                for (const auto &v : variantVector)
-                {
-                    size_t index = 1;
-                    for (size_t i = index; i < variantVector.size(); i++)
-                    {
-                        if (v == variantVector.at(i))
-                            throw std::runtime_error("Some items in vector are not unique");
-                    }
-                }
+                std::set<Variant> s(variantVector.begin(), variantVector.end());
+                if (s.size() != variantVector.size())
+                    throw std::runtime_error("Some items in vector are not unique");
             }
         }
 
@@ -519,38 +513,37 @@ namespace JsonSerialization {
             {
                 std::regex expr(pPattern->toString());
                 std::smatch sm;
-                if (! std::regex_match(value, sm, expr))
+                if (! std::regex_match(val, sm, expr))
                     throw std::runtime_error(std::string("String doesn't match the pattern: ") + pPattern->toString());
             }
             const Variant *pFormat = schemaValidator_valueFromMap(schemaVariantMap, "format", JsonSerialization::Type::String, false);
             if (pFormat)
             {
-                // todo test and finish this
                 std::string exprStr;
                 const std::string& format = pFormat->toString();
                 if (format == "date-time")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(.\d+)?(Z|[+-]\d{2}:\d{2})$)";
                 else if (format == "date")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{4}-\d{2}-\d{2}$)";
                 else if (format == "time")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{2}:\d{2}:\d{2}(.\d+)?(Z|[+-]\d{2}:\d{2})?$)";
                 else if (format == "email")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)";
                 else if (format == "hostname")
                     exprStr = R"(^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$");
                 else if (format == "ipv4")
-                    exprStr = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$";
+                    exprStr = R"(^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
                 else if (format == "ipv6")
                     exprStr = R"((([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])))";
                 else if (format == "uri")
-                    exprStr = R"((?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])";
-                else if (format == "json-pointer") // todo consider this
-                    exprStr = "";
+                    exprStr = R"(^(https?|wss?|ftp):\/\/[^\s$.?#].[^\s]*$)";
+                else if (format == "json-pointer")
+                    exprStr = R"(^(\/((~[01])|([^~\/]))*)*$)";
                 if (!exprStr.empty())
                 {
-                    std::regex expr(pPattern->toString());
+                    std::regex expr(exprStr);
                     std::smatch sm;
-                    if (! std::regex_match(value, sm, expr))
+                    if (! std::regex_match(val, sm, expr))
                         throw std::runtime_error(std::string("String doesn't match the format pattern: ") + format);
                 }
             }
@@ -871,82 +864,82 @@ namespace JsonSerialization {
         }
 
     public:
-        explicit Variant()
+        Variant()
         {
             type_ = Type::Empty;
             pData_.pData = nullptr;
         }
 
-        explicit Variant(std::nullptr_t)
+        Variant(std::nullptr_t)
         {
             type_ = Type::Null;
             pData_.pData = nullptr;
         }
 
-        explicit Variant(int value)
+        Variant(int value)
             : Variant((double)value)
         {
         }
 
-        explicit Variant(double value)
+        Variant(double value)
         {
             type_ = Type::Number;
             pData_.numberValue = value;
         }
 
-        explicit Variant(bool value)
+        Variant(bool value)
         {
             type_ = Type::Bool;
             pData_.boolValue = value;
         }
 
-        explicit Variant(const char *value)
+        Variant(const char *value)
             : Variant(std::move(std::string(value)))
         {
         }
 
-        explicit Variant(const std::string &value)
+        Variant(const std::string &value)
         {
             type_ = Type::String;
             pData_.pData = new std::string(value);
         }
 
-        explicit Variant(std::string &&value) noexcept
+        Variant(std::string &&value) noexcept
         {
             type_ = Type::String;
             pData_.pData = new std::string(std::move(value));
         }
 
-        explicit Variant(const VariantVector &value)
+        Variant(const VariantVector &value)
         {
             type_ = Type::Vector;
             pData_.pData = new VariantVector(value);
         }
 
-        explicit Variant(VariantVector &&value) noexcept
+        Variant(VariantVector &&value) noexcept
         {
             type_ = Type::Vector;
             pData_.pData = new VariantVector(std::move(value));
         }
 
-        explicit Variant(const VariantMap &value)
+        Variant(const VariantMap &value)
         {
             type_ = Type::Map;
             pData_.pData = new VariantMap(value);
         }
 
-        explicit Variant(VariantMap &&value) noexcept
+        Variant(VariantMap &&value) noexcept
         {
             type_ = Type::Map;
             pData_.pData = new VariantMap(std::move(value));
         }
 
-        explicit Variant(const Variant &value)
+        Variant(const Variant &value)
         {
             copyAll(value);
         }
 
-        explicit Variant(Variant &&value) noexcept
+        Variant(Variant &&value) noexcept
         {
             moveAll(value);
         }
@@ -992,6 +985,11 @@ namespace JsonSerialization {
             default:
                 return false;
             }
+        }
+
+        bool operator<(const Variant &r) const
+        {
+            return ! operator==(r);
         }
 
         Variant &operator=(Variant &&value) noexcept

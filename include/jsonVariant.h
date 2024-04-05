@@ -65,6 +65,7 @@ namespace JsonSerialization
         Variant& operator=(Variant&& value) noexcept;
 
         bool operator==(const Variant& r) const;
+        bool operator<(const Variant &r) const;
 
         Type type() const;
         bool isEmpty() const;

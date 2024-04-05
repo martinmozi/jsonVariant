@@ -258,18 +258,12 @@ namespace JsonSerializationInternal
             const JsonSerialization::Variant *pMaxContains = valueFromMap(schemaVariantMap, "maxContains", JsonSerialization::Type::Number, false);
             if (pMaxContains && pMaxContains->toInt() < (int)variantVector.size())
                 throw std::runtime_error("Too long vector");
-            const JsonSerialization::Variant *pUniqueItems = valueFromMap(schemaVariantMap, "uniqueItems", JsonSerialization::Type::Number, false);
+            const JsonSerialization::Variant *pUniqueItems = valueFromMap(schemaVariantMap, "uniqueItems", JsonSerialization::Type::Bool, false);
             if (pUniqueItems && pUniqueItems->toBool() && variantVector.size() > 1)
             {
-                for (const auto &v : variantVector)
-                {
-                    size_t index = 1;
-                    for (size_t i = index; i < variantVector.size(); i++)
-                    {
-                        if (v == variantVector.at(i))
-                            throw std::runtime_error("Some items in vector are not unique");
-                    }
-                }
+                std::set<JsonSerialization::Variant> s(variantVector.begin(), variantVector.end());
+                if (s.size() != variantVector.size())
+                    throw std::runtime_error("Some items in vector are not unique");
             }
         }
 
@@ -277,50 +271,49 @@ namespace JsonSerializationInternal
         {
             if (jsonVariant.type() != JsonSerialization::Type::String)
                 throw std::runtime_error("Expected string value");
-            const std::string& value = jsonVariant.toString();
+            const std::string& val = jsonVariant.toString();
             const JsonSerialization::Variant *pMinLength = valueFromMap(schemaVariantMap, "minLength", JsonSerialization::Type::Number, false);
-            if (pMinLength && pMinLength->toInt() > (int)value.size())
-                throw std::runtime_error(std::string("Too short string: ") + value);
+            if (pMinLength && pMinLength->toInt() > (int)val.size())
+                throw std::runtime_error(std::string("Too short string: ") + val);
             const JsonSerialization::Variant *pMaxLength = valueFromMap(schemaVariantMap, "maxLength", JsonSerialization::Type::Number, false);
-            if (pMaxLength && pMaxLength->toInt() < (int)value.size())
-                throw std::runtime_error(std::string("Too long string: ") + value);
+            if (pMaxLength && pMaxLength->toInt() < (int)val.size())
+                throw std::runtime_error(std::string("Too long string: ") + val);
             const JsonSerialization::Variant *pPattern = valueFromMap(schemaVariantMap, "pattern", JsonSerialization::Type::String, false);
             if (pPattern)
             {
                 std::regex expr(pPattern->toString());
                 std::smatch sm;
-                if (! std::regex_match(value, sm, expr))
+                if (! std::regex_match(val, sm, expr))
                     throw std::runtime_error(std::string("String doesn't match the pattern: ") + pPattern->toString());
             }
             const JsonSerialization::Variant *pFormat = valueFromMap(schemaVariantMap, "format", JsonSerialization::Type::String, false);
             if (pFormat)
             {
-                // todo test and finish this
                 std::string exprStr;
                 const std::string& format = pFormat->toString();
                 if (format == "date-time")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(.\d+)?(Z|[+-]\d{2}:\d{2})$)";
                 else if (format == "date")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{4}-\d{2}-\d{2}$)";
                 else if (format == "time")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^\d{2}:\d{2}:\d{2}(.\d+)?(Z|[+-]\d{2}:\d{2})?$)";
                 else if (format == "email")
-                    exprStr = "xx"; //todo
+                    exprStr = R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)";
                 else if (format == "hostname")
                     exprStr = R"(^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$");
                 else if (format == "ipv4")
-                    exprStr = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$";
+                    exprStr = R"(^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
                 else if (format == "ipv6")
                     exprStr = R"((([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])))";
                 else if (format == "uri")
-                    exprStr = R"((?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])";
-                else if (format == "json-pointer") // todo consider this
-                    exprStr = "";
+                    exprStr = R"(^(https?|wss?|ftp):\/\/[^\s$.?#].[^\s]*$)";
+                else if (format == "json-pointer")
+                    exprStr = R"(^(\/((~[01])|([^~\/]))*)*$)";
                 if (!exprStr.empty())
                 {
-                    std::regex expr(pPattern->toString());
+                    std::regex expr(exprStr);
                     std::smatch sm;
-                    if (! std::regex_match(value, sm, expr))
+                    if (! std::regex_match(val, sm, expr))
                         throw std::runtime_error(std::string("String doesn't match the format pattern: ") + format);
                 }
             }
@@ -897,6 +890,11 @@ JsonSerialization::Variant& JsonSerialization::Variant::operator=(const JsonSeri
 {
     copyAll(value);
     return *this;
+}
+
+bool JsonSerialization::Variant::operator<(const Variant &r) const
+{
+    return ! operator==(r);
 }
 
 bool JsonSerialization::Variant::operator==(const JsonSerialization::Variant &r) const

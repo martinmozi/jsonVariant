@@ -8,6 +8,7 @@ struct Team
         std::string name;
         double averageScoring;
 		Player() : averageScoring(0.0) {}
+		Player(std::string n, double a) : name(n), averageScoring(a) {}
 	};
 	struct Address
 	{
@@ -21,6 +22,8 @@ struct Team
 	Address address;
 	std::vector<Player> players;
 	std::vector<int> identificators;
+	Team() : id(0) {}
+	Team(int i, std::string c, Address a, std::vector<Player> p) : id(i), coach(c), address(a), players(p) {}
 };
 
 #endif

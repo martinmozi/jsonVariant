@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "jsonVariant.h"
+#include "jsonVariant.hpp"
 
 namespace
 {
