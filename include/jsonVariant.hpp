@@ -747,6 +747,32 @@ namespace JsonSerialization {
             {
                 ++pData;
                 char c = *pData;
+                if (c == '\\')  // potentional escaping
+                {
+                    ++pData;
+                    if (pData == nullptr) {
+                        throw std::runtime_error("Incorrect escaping in string value reading at the end");
+                    }
+
+                    c = *pData;
+                    switch (c) {
+                    case '"':  // Escape double quotes
+                    case '\\': // Escape backslashes
+                    case 'n':  // Escape newlines
+                    case 'r':  // Escape carriage return
+                    case 't':  // Escape tabs
+                    case 'b':  // Escape backspace
+                    case 'f':  // Escape form feed
+                        potentionalString.push_back(*(pData - 1));
+                        potentionalString.push_back(c);
+                        break;
+                    default:
+                        throw std::runtime_error("Incorrect escaping in string value reading");
+                    }
+                    
+                    continue;
+                }
+
                 if (c == '\"')
                 {
                     ++pData;
@@ -857,7 +883,7 @@ namespace JsonSerialization {
             for (size_t i = 0; i < len ;i++)
             {
                 char c = pData[i];
-                if (c== '\"')
+                if (c == '\"' && i > 0 && pData[i - 1] != '\\')
                     record = !record;
 
                 if (!JsonSerializationInternal::isIgnorable(c) || record)
