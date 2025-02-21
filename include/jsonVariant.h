@@ -19,7 +19,44 @@ namespace JsonSerialization
     };
 
     class Variant;
-    typedef std::map<std::string, Variant> VariantMap;
+    template <typename T1, typename T2> struct _VariantMap : std::map<T1, T2>
+    {
+        using std::map<T1, T2>::map; // "inherit" the constructors.
+        bool contains(const char* key) const
+        {
+            return (this->find(key) != this->end());
+        }
+
+        bool isNull(const char* key) const
+        {
+            const auto it = this->find(key);
+            if (it == this->end())
+                return false;
+
+            return it->second.isNull();
+        }
+
+        template<typename T> T value(const char* key, T defaultValue) const
+        {
+            const auto it = this->find(key);
+            if (it != this->end())
+                return it->second.template value<T>();
+
+            return defaultValue;
+        }
+
+        template<typename T> void value(const char* key, T& val, T defaultValue) const
+        {
+            val = this->value(key, defaultValue);
+        }
+
+        const Variant& operator()(const char* key) const
+        {
+            return this->at(key);
+        }
+    };
+
+    typedef _VariantMap<std::string, Variant> VariantMap;
     typedef std::vector<Variant> VariantVector;
     class Variant
     {
@@ -63,7 +100,6 @@ namespace JsonSerialization
 
         Variant& operator=(const Variant& value);
         Variant& operator=(Variant&& value) noexcept;
-
         bool operator==(const Variant& r) const;
 
         Type type() const;
@@ -75,10 +111,19 @@ namespace JsonSerialization
         const std::string& toString() const;
         const VariantVector& toVector() const;
         const VariantMap& toMap() const;
-        void value(int &val) const;
-        void value(double &val) const;
-        void value(bool &val) const;
-        void value(std::string &val) const;
+
+        template<typename T> T value() const
+        {
+            T val;
+            _value(val);
+            return val;
+        }
+
+        template<typename T> void value(T& val) const
+        {
+            _value(val);
+        }
+
         template<typename T> void valueVector(std::vector<T> &value) const
         {
             const VariantVector &variantVector = toVector();
@@ -91,17 +136,20 @@ namespace JsonSerialization
             }
         }
 
-        std::string toJson() const;
-        std::string toJson(bool pretty) const;
-
+        std::string toJson(bool pretty = false) const;
         static bool fromJson(const std::string& jsonStr, Variant& jsonVariant, std::string* errorStr = nullptr);
         static bool fromJson(const std::string& jsonStr, const std::string& jsonSchema, Variant& jsonVariant, std::string* errorStr = nullptr);
         
     private:
         void clear();
         void copyAll(const Variant& value);
-        void moveAll(Variant &value) noexcept;
-        std::string _toJson(int &intend) const;
+        void moveAll(Variant &&value) noexcept;
+        std::string _toJson() const;
+        std::string _toJson(int& intend) const;
+        void _value(int& val) const;
+        void _value(double& val) const;
+        void _value(bool& val) const;
+        void _value(std::string& val) const;
     };
 }
 

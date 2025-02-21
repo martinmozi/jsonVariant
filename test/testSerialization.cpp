@@ -1,5 +1,6 @@
-#include <gtest/gtest.h>
+#include <catch2/catch_all.hpp>
+#include "../include/jsonVariant.h"
 
-TEST(exampleTest, test1) {
-    EXPECT_EQ (0,  0);
+TEST_CASE("First test", "Test serialization") {
+    REQUIRE(0 == 0);
 }

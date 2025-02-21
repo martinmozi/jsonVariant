@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(JsonVariant VERSION 2.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 if(NOT MSVC)
     add_compile_options(-W -Wextra -Wall -Werror -pedantic)
@@ -12,7 +12,7 @@ include(CMakePackageConfigHelpers)
 include_directories("${CMAKE_SOURCE_DIR}/include")
 
 option(BUILD_SHARED_LIBS "Build Shared Libraries (default OFF)" OFF) # static version is default
-option(BUILD_EXAMPLES "Build and install examples (default OFF)" OFF)
+option(BUILD_EXAMPLES "Build and install examples (default OFF)" ON)
 option(BUILD_TESTS "Build tests (default OFF)" ON)
 
 if (BUILD_SHARED_LIBS)
@@ -22,7 +22,8 @@ else()
     set(LIB_TYPE STATIC)
 endif()
 
-add_library(jsonVariant ${LIB_TYPE} src/jsonVariant.cpp)
+add_library(jsonVariantObj OBJECT src/jsonVariant.cpp)
+add_library(jsonVariant ${LIB_TYPE} $<TARGET_OBJECTS:jsonVariantObj>)
 target_include_directories(jsonVariant PRIVATE include)
 
 if (BUILD_EXAMPLES)
