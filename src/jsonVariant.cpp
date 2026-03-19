@@ -63,7 +63,7 @@ namespace JsonSerializationInternal
         static double parseNumber(const char*& pData);
         static Variant parseNull(const char*& pData);
         static void gotoValue(const char*& pData);
-        static std::string trim(const std::string& jsonStr);
+        static void skipWhitespace(const char*& pData);
         static bool isIgnorable(char d);
     };
 
@@ -97,14 +97,13 @@ namespace JsonSerializationInternal
 
     void JsonParser::gotoValue(const char*& pData)
     {
-        if (*pData != '\0')
+        ++pData;
+        skipWhitespace(pData);
+        if (*pData == ':')
         {
-            ++pData;
-            if (*pData == ':')
-            {
-                pData++;
-                return;
-            }
+            pData++;
+            skipWhitespace(pData);
+            return;
         }
 
         throw std::runtime_error("Expected value delimiter");
@@ -197,32 +196,12 @@ namespace JsonSerializationInternal
 
     double JsonParser::parseNumber(const char*& pData)
     {
-        std::string potentionalNumber;
-        while (*pData != '\0')
-        {
-            char c = *pData;
-            if (isdigit(c) || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+')
-            {
-                potentionalNumber += c;
-            }
-            else
-            {
-                try
-                {
-                    return std::stod(potentionalNumber);
-                }
-                catch (const std::invalid_argument&) {
-                    throw std::runtime_error("Invalid argument when number converting");
-                }
-                catch (const std::out_of_range&) {
-                    throw std::runtime_error("Out of range value when number converting");
-                }
-            }
-
-            ++pData;
-        }
-
-        throw std::runtime_error("Not finished number value reading");
+        char* end = nullptr;
+        double result = strtod(pData, &end);
+        if (end == pData)
+            throw std::runtime_error("Invalid number");
+        pData = end;
+        return result;
     }
 
     Variant JsonParser::parseNull(const char*& pData)
@@ -241,6 +220,7 @@ namespace JsonSerializationInternal
 
     Variant JsonParser::parseValue(const char*& pData)
     {
+        skipWhitespace(pData);
         Variant variant;
         char c = *pData;
         if (c == '{')
@@ -261,6 +241,7 @@ namespace JsonSerializationInternal
         else
             throw std::runtime_error("Unknown character when parsing value");
 
+        skipWhitespace(pData);
         c = *pData;
         if (c == ',' || c == '}' || c == ']')
             return variant;
@@ -274,14 +255,18 @@ namespace JsonSerializationInternal
         VariantVector variantVector;
         while (*pData != '\0')
         {
-            variantVector.emplace_back(parseValue(pData));
+            skipWhitespace(pData);
             if (*pData == ']')
             {
                 ++pData;
                 return variantVector;
             }
 
-            ++pData;
+            variantVector.emplace_back(parseValue(pData));
+
+            skipWhitespace(pData);
+            if (*pData == ',')
+                ++pData;
         }
 
         throw std::runtime_error("Unfinished vector");
@@ -293,7 +278,13 @@ namespace JsonSerializationInternal
         VariantMap variantMap;
         while (*pData != '\0')
         {
-            bool isEmpty = false;
+            skipWhitespace(pData);
+            if (*pData == '}')
+            {
+                ++pData;
+                return variantMap;
+            }
+
             if (*pData == '\"')
             {
                 std::string key = parseKey(pData);
@@ -302,20 +293,12 @@ namespace JsonSerializationInternal
             }
             else
             {
-                isEmpty = true;
-            }
-
-            if (*pData == '}')
-            {
-                ++pData;
-                return variantMap;
-            }
-
-            ++pData;
-            if (isEmpty)
-            {
                 throw std::runtime_error("Wrong character in json");
             }
+
+            skipWhitespace(pData);
+            if (*pData == ',')
+                ++pData;
         }
 
         throw std::runtime_error("Unfinished map");
@@ -347,39 +330,18 @@ namespace JsonSerializationInternal
         SchemaValidator().validate(schemaVariant, jsonVariant);
     }
 
-    std::string JsonParser::trim(const std::string& jsonStr)
-    {
-        const char* pData = jsonStr.c_str();
-        size_t len = jsonStr.size();
-        std::string outStr(len, 0);
-        int j = 0;
-        char* p = (char*)outStr.data();
-        bool record = false;
-        for (size_t i = 0; i < len; i++)
-        {
-            char c = pData[i];
-            if (c == '\"' && i > 0 && pData[i - 1] != '\\')
-                record = !record;
-
-            if (!isIgnorable(c) || record)
-            {
-                p[j] = c;
-                j++;
-            }
-        }
-
-        outStr.resize(j);
-        return outStr;
+    void JsonParser::skipWhitespace(const char*& pData) {
+        while (*pData == ' ' || *pData == '\n' || *pData == '\t' || *pData == '\r')
+            ++pData;
     }
 
     void JsonParser::fromJson(const std::string& jsonStr, Variant& jsonVariant)
     {
-        std::string _jsonStr = trim(jsonStr);
-        const char* pData = _jsonStr.c_str();
-        size_t len = _jsonStr.size();
-        if (len < 2)
+        const char* pData = jsonStr.c_str();
+        if (jsonStr.size() < 2)
             throw std::runtime_error("No short json");
 
+        skipWhitespace(pData);
         jsonVariant = parseObject(pData);
     }
     
@@ -1016,24 +978,12 @@ void Variant::clear()
     break;
 
     case Type::Vector:
-    {
-        VariantVector* pJsonVariantVector = (VariantVector*)pData_.pData;
-        for (Variant& jsonVariant : *pJsonVariantVector)
-            jsonVariant.clear();
-
-        delete pJsonVariantVector;
-    }
-    break;
+        delete (VariantVector*)pData_.pData;
+        break;
 
     case Type::Map:
-    {
-        VariantMap* pJsonVariantMap = (VariantMap*)pData_.pData;
-        for (auto& it : *pJsonVariantMap)
-            it.second.clear();
-
-        delete pJsonVariantMap;
-    }
-    break;
+        delete (VariantMap*)pData_.pData;
+        break;
 
     default:
         break;
