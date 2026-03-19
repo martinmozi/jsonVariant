@@ -24,7 +24,25 @@ namespace JsonSerializationInternal
 
         inline bool isInteger(double d)
         {
-            return d == (int) d;
+            return d == std::floor(d) && d >= std::numeric_limits<int>::min() && d <= std::numeric_limits<int>::max();
+        }
+
+        std::string escapeJson(const std::string& s) {
+            std::string out;
+            out.reserve(s.size());
+            for (char c : s) {
+                switch (c) {
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n";  break;
+                case '\r': out += "\\r";  break;
+                case '\t': out += "\\t";  break;
+                case '\b': out += "\\b";  break;
+                case '\f': out += "\\f";  break;
+                default:   out += c;
+                }
+            }
+            return out;
         }
     }
 
@@ -79,7 +97,7 @@ namespace JsonSerializationInternal
 
     void JsonParser::gotoValue(const char*& pData)
     {
-        if (pData != NULL)
+        if (*pData != '\0')
         {
             ++pData;
             if (*pData == ':')
@@ -95,7 +113,7 @@ namespace JsonSerializationInternal
     std::string JsonParser::parseKey(const char*& pData)
     {
         std::string key;
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             ++pData;
             char c = *pData;
@@ -111,7 +129,7 @@ namespace JsonSerializationInternal
     std::string JsonParser::parseString(const char*& pData)
     {
         std::string potentionalString;
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             ++pData;
             char c = *pData;
@@ -124,16 +142,13 @@ namespace JsonSerializationInternal
 
                 c = *pData;
                 switch (c) {
-                case '"':  // Escape double quotes
-                case '\\': // Escape backslashes
-                case 'n':  // Escape newlines
-                case 'r':  // Escape carriage return
-                case 't':  // Escape tabs
-                case 'b':  // Escape backspace
-                case 'f':  // Escape form feed
-                    potentionalString.push_back(*(pData - 1));
-                    potentionalString.push_back(c);
-                    break;
+                case '"':  potentionalString.push_back('"'); break;
+                case '\\': potentionalString.push_back('\\'); break;
+                case 'n':  potentionalString.push_back('\n'); break;
+                case 'r':  potentionalString.push_back('\r'); break;
+                case 't':  potentionalString.push_back('\t'); break;
+                case 'b':  potentionalString.push_back('\b'); break;
+                case 'f':  potentionalString.push_back('\f'); break;
                 default:
                     throw std::runtime_error("Incorrect escaping in string value reading");
                 }
@@ -183,10 +198,10 @@ namespace JsonSerializationInternal
     double JsonParser::parseNumber(const char*& pData)
     {
         std::string potentionalNumber;
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             char c = *pData;
-            if (isdigit(c) || c == '.' || c == '-')
+            if (isdigit(c) || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+')
             {
                 potentionalNumber += c;
             }
@@ -241,7 +256,7 @@ namespace JsonSerializationInternal
         else if (isdigit(c) || c == '.' || c == '-')
         {
             double d = parseNumber(pData);
-            variant = (d == (int)d) ? Variant((int)d) : Variant(d);
+            variant = isInteger(d) ? Variant((int)d) : Variant(d);
         }
         else
             throw std::runtime_error("Unknown character when parsing value");
@@ -257,7 +272,7 @@ namespace JsonSerializationInternal
     {
         ++pData;
         VariantVector variantVector;
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             variantVector.emplace_back(parseValue(pData));
             if (*pData == ']')
@@ -276,7 +291,7 @@ namespace JsonSerializationInternal
     {
         ++pData;
         VariantMap variantMap;
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             bool isEmpty = false;
             if (*pData == '\"')
@@ -308,7 +323,7 @@ namespace JsonSerializationInternal
 
     Variant JsonParser::parseObject(const char*& pData)
     {
-        while (pData != NULL)
+        while (*pData != '\0')
         {
             char c = *pData;
             if (c == '{')
@@ -353,6 +368,7 @@ namespace JsonSerializationInternal
             }
         }
 
+        outStr.resize(j);
         return outStr;
     }
 
@@ -857,7 +873,11 @@ Variant::Variant(Variant&& value) noexcept
 
 Variant& Variant::operator=(const Variant& value)
 {
-    copyAll(value);
+    if (this != &value)
+    {
+        clear();
+        copyAll(value);
+    }
     return *this;
 }
 
@@ -870,9 +890,13 @@ bool Variant::operator==(const Variant& r) const
     {
     case Type::Empty:
     case Type::Null:
+        return true;
+
     case Type::Number:
+        return pData_.numberValue == r.pData_.numberValue;
+
     case Type::Bool:
-        return (pData_.pData == r.pData_.pData);
+        return pData_.boolValue == r.pData_.boolValue;
 
     case Type::String:
         return *((const std::string*)pData_.pData) == *((const std::string*)r.pData_.pData);
@@ -1075,7 +1099,7 @@ std::string Variant::_toJson() const
         return pData_.boolValue ? "true" : "false";
 
     case Type::String:
-        return std::string("\"") + *((std::string*)pData_.pData) + "\"";
+        return std::string("\"") + JsonSerializationInternal::escapeJson(*((std::string*)pData_.pData)) + "\"";
 
     case Type::Vector:
     {
@@ -1136,7 +1160,7 @@ std::string Variant::_toJson(int& intend) const
         return pData_.boolValue ? "true" : "false";
 
     case Type::String:
-        return std::string("\"") + *((std::string*)pData_.pData) + "\"";
+        return std::string("\"") + JsonSerializationInternal::escapeJson(*((std::string*)pData_.pData)) + "\"";
 
     case Type::Vector:
     {
